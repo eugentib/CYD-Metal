@@ -14,8 +14,13 @@ static adc_oneshot_unit_handle_t s_adc1;
 
 static inline void rgb_write(bool r, bool g, bool b)
 {
-    /* The onboard CYD RGB LED is active-low. */
-    gpio_set_level(BOARD_CYD35_LED_R_GPIO, r ? 0 : 1);
+    (void)r;
+    /*
+     * Keep GPIO4/red inactive. Some ESP32-3248S035 revisions/documentation
+     * also associate GPIO4 with TFT reset, so the detector must never pulse
+     * it low while the display is running.
+     */
+    gpio_set_level(BOARD_CYD35_LED_R_GPIO, 1);
     gpio_set_level(BOARD_CYD35_LED_G_GPIO, g ? 0 : 1);
     gpio_set_level(BOARD_CYD35_LED_B_GPIO, b ? 0 : 1);
 }
@@ -124,16 +129,16 @@ bool board_cyd35_zero_button_pressed(void)
     return gpio_get_level(BOARD_CYD35_ZERO_GPIO) == 0;
 }
 
-void board_cyd35_set_feedback(uint16_t score)
+void board_cyd35_set_feedback(uint16_t score, bool audio_enabled)
 {
     if (score < 8) {
         rgb_write(false, true, false);
         audio_set(0, false);
     } else if (score < 25) {
-        rgb_write(true, true, false);
-        audio_set(500 + score * 20U, true);
+        rgb_write(false, true, true);
+        audio_set(500 + score * 20U, audio_enabled);
     } else {
-        rgb_write(true, false, false);
-        audio_set(700 + score * 25U, true);
+        rgb_write(false, false, true);
+        audio_set(700 + score * 25U, audio_enabled);
     }
 }
