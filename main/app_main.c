@@ -11,14 +11,31 @@
 
 static const char *TAG = "CYD-Metal";
 
+static void detector_tx_adapter(void *ctx, bool high)
+{
+    (void)ctx;
+    board_cyd35_tx_set(high);
+}
+
+static esp_err_t detector_adc_adapter(void *ctx, int *raw)
+{
+    (void)ctx;
+    return board_cyd35_adc_read(raw);
+}
+
 void app_main(void)
 {
     ESP_ERROR_CHECK(board_cyd35_init());
 
     detector_config_t cfg = detector_default_config();
+    detector_io_t io = {
+        .tx_set = detector_tx_adapter,
+        .adc_read = detector_adc_adapter,
+        .ctx = NULL,
+    };
     detector_t detector;
 
-    ESP_ERROR_CHECK(detector_init(&detector, &cfg));
+    ESP_ERROR_CHECK(detector_init(&detector, &cfg, &io));
 
     ESP_LOGI(TAG, "CYD-Metal M0 starting");
     ESP_LOGI(TAG, "TX GPIO=%d, ADC GPIO=%d / ADC1_CH7",
@@ -36,7 +53,7 @@ void app_main(void)
         detector_frame_t frame;
         ESP_ERROR_CHECK(detector_capture_frame(&detector, &frame));
 
-        bool button_down = board_cyd35_zero_button_pressed();
+        const bool button_down = board_cyd35_zero_button_pressed();
         if (button_down && !button_was_down) {
             detector_zero_from_frame(&detector, &frame);
             ESP_LOGI(TAG, "ZERO captured");
