@@ -6,7 +6,7 @@ The project deliberately reuses the proven Spirit PI hardware concept but **does
 
 ## Current milestone: M0 / bring-up
 
-The first firmware is intentionally display-free. It focuses on the part that matters most for a PI detector:
+The M0 firmware now includes a lightweight native ST7796 UI and touchscreen support, while keeping all display/touch traffic outside the TX/ADC sampling window. It focuses on the part that matters most for a PI detector:
 
 - deterministic TX pulse generation;
 - five ADC samples from the decay after TX turns off;
@@ -15,7 +15,7 @@ The first firmware is intentionally display-free. It focuses on the part that ma
 - EARLY / MID / LATE response values;
 - a simple target score and persistence metric;
 - CYD RGB LED and speaker feedback;
-- serial logging for oscilloscope-assisted tuning.
+- serial logging for oscilloscope-assisted tuning;\n- ST7796 live screen with SCORE / EARLY / MID / LATE;\n- touch autodetection for XPT2046 (R) or GT911 (C);\n- on-screen ZERO, MUTE and RAW/PERSIST controls.
 
 Once the analog timing is stable we will replace the five-tap ADC acquisition with continuous/DMA capture and then add the ST7796 display/touch UI.
 
