@@ -25,15 +25,15 @@
 
 ## M2 - CYD UI
 
-- [ ] ST7796 display driver
-- [ ] resistive/capacitive touch board profile
-- [ ] large target meter
+- [x] ST7796 display driver
+- [x] resistive/capacitive touch board profile
+- [x] basic large target meter
 - [ ] live decay graph
 - [ ] baseline overlay
 - [ ] EARLY/MID/LATE bars
-- [ ] ZERO button on screen
+- [x] ZERO button on screen
 - [ ] sensitivity and pulse settings
-- [ ] audio settings
+- [x] basic mute control
 
 ## M3 - manhole-cover mode
 
