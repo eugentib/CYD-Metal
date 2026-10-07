@@ -33,7 +33,7 @@ bool board_cyd35_zero_button_pressed(void);
  *   high           -> red
  * Above threshold the onboard amplifier receives a square-wave tone.
  */
-void board_cyd35_set_feedback(uint16_t score);
+void board_cyd35_set_feedback(uint16_t score, bool audio_enabled);
 
 #ifdef __cplusplus
 }
