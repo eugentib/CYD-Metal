@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "board_cyd35.h"
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
 
@@ -23,9 +22,13 @@ detector_config_t detector_default_config(void)
     return cfg;
 }
 
-esp_err_t detector_init(detector_t *detector, const detector_config_t *config)
+esp_err_t detector_init(detector_t *detector,
+                        const detector_config_t *config,
+                        const detector_io_t *io)
 {
-    if (!detector || !config || config->pulses_per_frame == 0) {
+    if (!detector || !config || !io ||
+        !io->tx_set || !io->adc_read ||
+        config->pulses_per_frame == 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -34,8 +37,15 @@ esp_err_t detector_init(detector_t *detector, const detector_config_t *config)
         return ESP_ERR_INVALID_ARG;
     }
 
+    for (int i = 1; i < DETECTOR_TAP_COUNT; ++i) {
+        if (config->tap_us[i] <= config->tap_us[i - 1]) {
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+
     memset(detector, 0, sizeof(*detector));
     detector->cfg = *config;
+    detector->io = *io;
     return ESP_OK;
 }
 
@@ -50,11 +60,11 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
     uint32_t sums[DETECTOR_TAP_COUNT] = {0};
 
     for (uint8_t p = 0; p < detector->cfg.pulses_per_frame; ++p) {
-        int64_t cycle_start = esp_timer_get_time();
+        const int64_t cycle_start = esp_timer_get_time();
 
-        board_cyd35_tx_set(true);
+        detector->io.tx_set(detector->io.ctx, true);
         esp_rom_delay_us(detector->cfg.pulse_width_us);
-        board_cyd35_tx_set(false);
+        detector->io.tx_set(detector->io.ctx, false);
 
         const int64_t rx_t0 = esp_timer_get_time();
 
@@ -62,17 +72,19 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
             const uint32_t target_us = detector->cfg.tap_us[i];
 
             while ((uint32_t)(esp_timer_get_time() - rx_t0) < target_us) {
-                /* Busy wait: M0 favors deterministic timing over CPU efficiency. */
+                /* M0 intentionally favors timing visibility over CPU efficiency. */
             }
 
-            uint32_t actual_us = (uint32_t)(esp_timer_get_time() - rx_t0);
+            const uint32_t actual_us =
+                (uint32_t)(esp_timer_get_time() - rx_t0);
             if (actual_us > target_us + 15U) {
                 frame->late_samples++;
             }
 
             int raw = 0;
-            esp_err_t err = board_cyd35_adc_read(&raw);
+            esp_err_t err = detector->io.adc_read(detector->io.ctx, &raw);
             if (err != ESP_OK) {
+                detector->io.tx_set(detector->io.ctx, false);
                 return err;
             }
 
@@ -83,7 +95,8 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
 
         const int64_t elapsed = esp_timer_get_time() - cycle_start;
         if (elapsed < detector->cfg.pulse_period_us) {
-            esp_rom_delay_us((uint32_t)(detector->cfg.pulse_period_us - elapsed));
+            esp_rom_delay_us(
+                (uint32_t)(detector->cfg.pulse_period_us - elapsed));
         }
     }
 
@@ -103,7 +116,8 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
     }
 
     for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
-        int32_t d = (int32_t)frame->raw[i] - (int32_t)detector->baseline[i];
+        int32_t d =
+            (int32_t)frame->raw[i] - (int32_t)detector->baseline[i];
         if (d > INT16_MAX) d = INT16_MAX;
         if (d < INT16_MIN) d = INT16_MIN;
         frame->diff[i] = (int16_t)d;
@@ -129,7 +143,8 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
          4U * frame->late) / 7U);
 
     uint32_t persistence =
-        ((uint32_t)frame->late * 100U) / ((uint32_t)frame->early + 1U);
+        ((uint32_t)frame->late * 100U) /
+        ((uint32_t)frame->early + 1U);
     if (persistence > 999U) {
         persistence = 999U;
     }
@@ -138,7 +153,8 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
     return ESP_OK;
 }
 
-void detector_zero_from_frame(detector_t *detector, const detector_frame_t *frame)
+void detector_zero_from_frame(detector_t *detector,
+                              const detector_frame_t *frame)
 {
     if (!detector || !frame) {
         return;
