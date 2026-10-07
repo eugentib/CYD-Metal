@@ -109,11 +109,5 @@ esp_err_t ui_cyd35_update(const detector_frame_t *frame,
                                              muted ? C_RED : C_GREEN,
                                              muted ? "OFF" : "ON"));
 
-    if (touch && touch->touched) {
-        int x = touch->x;
-        int y = touch->y;
-        ESP_ERROR_CHECK(display_st7796_fill_rect(x - 3, y - 3, 7, 7, C_WHITE));
-    }
-
     return ESP_OK;
 }
