@@ -12,17 +12,15 @@ static adc_oneshot_unit_handle_t s_adc1;
 #define AUDIO_DUTY_BITS      LEDC_TIMER_8_BIT
 #define AUDIO_DUTY_ON        32
 
-static inline void rgb_write(bool r, bool g, bool b)
+static inline void rgb_off(void)
 {
-    (void)r;
     /*
-     * Keep GPIO4/red inactive. Some ESP32-3248S035 revisions/documentation
-     * also associate GPIO4 with TFT reset, so the detector must never pulse
-     * it low while the display is running.
+     * CYD RGB LED is active-low. Keep all three channels off permanently.
+     * This also avoids unnecessary digital switching near the analog front-end.
      */
     gpio_set_level(BOARD_CYD35_LED_R_GPIO, 1);
-    gpio_set_level(BOARD_CYD35_LED_G_GPIO, g ? 0 : 1);
-    gpio_set_level(BOARD_CYD35_LED_B_GPIO, b ? 0 : 1);
+    gpio_set_level(BOARD_CYD35_LED_G_GPIO, 1);
+    gpio_set_level(BOARD_CYD35_LED_B_GPIO, 1);
 }
 
 static void audio_set(uint32_t frequency_hz, bool enabled)
@@ -60,7 +58,7 @@ esp_err_t board_cyd35_init(void)
     ESP_RETURN_ON_ERROR(gpio_config(&outputs), "board", "output gpio config failed");
 
     board_cyd35_tx_set(false);
-    rgb_write(false, true, false);
+    rgb_off();
 
     const gpio_config_t button = {
         .pin_bit_mask = 1ULL << BOARD_CYD35_ZERO_GPIO,
@@ -131,14 +129,13 @@ bool board_cyd35_zero_button_pressed(void)
 
 void board_cyd35_set_feedback(uint16_t score, bool audio_enabled)
 {
+    rgb_off();
+
     if (score < 8) {
-        rgb_write(false, true, false);
         audio_set(0, false);
     } else if (score < 25) {
-        rgb_write(false, true, true);
         audio_set(500 + score * 20U, audio_enabled);
     } else {
-        rgb_write(false, false, true);
         audio_set(700 + score * 25U, audio_enabled);
     }
 }
