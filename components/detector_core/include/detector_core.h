@@ -11,6 +11,15 @@ extern "C" {
 
 #define DETECTOR_TAP_COUNT 5
 
+typedef esp_err_t (*detector_adc_read_fn)(void *ctx, int *raw);
+typedef void (*detector_tx_set_fn)(void *ctx, bool high);
+
+typedef struct {
+    detector_tx_set_fn tx_set;
+    detector_adc_read_fn adc_read;
+    void *ctx;
+} detector_io_t;
+
 typedef struct {
     uint32_t pulse_width_us;
     uint32_t pulse_period_us;
@@ -20,6 +29,7 @@ typedef struct {
 
 typedef struct {
     detector_config_t cfg;
+    detector_io_t io;
     uint16_t baseline[DETECTOR_TAP_COUNT];
     bool baseline_valid;
 } detector_t;
@@ -40,11 +50,14 @@ typedef struct {
 
 detector_config_t detector_default_config(void);
 
-esp_err_t detector_init(detector_t *detector, const detector_config_t *config);
+esp_err_t detector_init(detector_t *detector,
+                        const detector_config_t *config,
+                        const detector_io_t *io);
 
 esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame);
 
-void detector_zero_from_frame(detector_t *detector, const detector_frame_t *frame);
+void detector_zero_from_frame(detector_t *detector,
+                              const detector_frame_t *frame);
 
 #ifdef __cplusplus
 }
