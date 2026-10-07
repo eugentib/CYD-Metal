@@ -13,6 +13,7 @@ extern "C" {
 esp_err_t display_st7796_init(void);
 esp_err_t display_st7796_fill(uint16_t rgb565);
 esp_err_t display_st7796_fill_rect(int x, int y, int w, int h, uint16_t rgb565);
+esp_err_t display_st7796_draw_text(int x, int y, int scale, uint16_t rgb565, const char *text);
 esp_err_t display_st7796_draw_bringup_screen(void);
 
 #ifdef __cplusplus
