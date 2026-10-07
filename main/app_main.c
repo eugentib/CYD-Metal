@@ -80,6 +80,13 @@ void app_main(void)
          * detector_capture_frame() already consumes about one frame interval.
          * Yield briefly so lower-priority system tasks get CPU time.
          */
-        vTaskDelay(pdMS_TO_TICKS(1));
+        /*
+         * One FreeRTOS tick, not pdMS_TO_TICKS(1).
+         *
+         * ESP-IDF defaults to a 100 Hz tick (10 ms). pdMS_TO_TICKS(1)
+         * therefore rounds to zero and does not block at all, starving IDLE0
+         * and eventually tripping the task watchdog.
+         */
+        vTaskDelay(1);
     }
 }
