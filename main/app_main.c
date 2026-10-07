@@ -9,6 +9,8 @@
 #include "board_cyd35.h"
 #include "detector_core.h"
 #include "display_st7796.h"
+#include "touch_cyd35.h"
+#include "ui_cyd35.h"
 
 static const char *TAG = "CYD-Metal";
 
@@ -30,8 +32,13 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Initializing ST7796 display...");
     ESP_ERROR_CHECK(display_st7796_init());
-    ESP_ERROR_CHECK(display_st7796_draw_bringup_screen());
-    ESP_LOGI(TAG, "Display bring-up pattern ready");
+
+    ESP_LOGI(TAG, "Detecting touchscreen...");
+    ESP_ERROR_CHECK(touch_cyd35_init());
+    ESP_LOGI(TAG, "Touch controller: %s", touch_cyd35_type_name());
+
+    ESP_ERROR_CHECK(ui_cyd35_init(touch_cyd35_type_name()));
+    ESP_LOGI(TAG, "Live detector UI ready");
 
     detector_config_t cfg = detector_default_config();
     detector_io_t io = {
@@ -46,27 +53,67 @@ void app_main(void)
     ESP_LOGI(TAG, "CYD-Metal M0 starting");
     ESP_LOGI(TAG, "TX GPIO=%d, ADC GPIO=%d / ADC1_CH7",
              BOARD_CYD35_TX_GPIO, BOARD_CYD35_ADC_GPIO);
-    ESP_LOGI(TAG, "Press BOOT briefly at any time to capture ZERO/baseline");
+    ESP_LOGI(TAG, "BOOT or on-screen ZERO captures the baseline");
     ESP_LOGI(TAG, "pulse=%" PRIu32 " us, PRF=%" PRIu32 " Hz, averages=%u",
              cfg.pulse_width_us,
              1000000UL / cfg.pulse_period_us,
              cfg.pulses_per_frame);
 
     bool button_was_down = false;
+    bool touch_was_down = false;
+    bool muted = false;
+    bool raw_page = false;
     uint32_t frame_no = 0;
 
     while (true) {
         detector_frame_t frame;
         ESP_ERROR_CHECK(detector_capture_frame(&detector, &frame));
 
+        bool do_zero = false;
+
         const bool button_down = board_cyd35_zero_button_pressed();
         if (button_down && !button_was_down) {
-            detector_zero_from_frame(&detector, &frame);
-            ESP_LOGI(TAG, "ZERO captured");
+            do_zero = true;
         }
         button_was_down = button_down;
 
-        board_cyd35_set_feedback(frame.score);
+        touch_cyd35_point_t touch;
+        ESP_ERROR_CHECK(touch_cyd35_read(&touch));
+
+        if (touch.touched && !touch_was_down) {
+            ESP_LOGI(TAG, "TOUCH raw=(%u,%u) screen=(%u,%u)",
+                     touch.raw_x, touch.raw_y, touch.x, touch.y);
+
+            if (touch.y >= 255) {
+                if (touch.x < 160) {
+                    do_zero = true;
+                } else if (touch.x < 320) {
+                    muted = !muted;
+                    ESP_LOGI(TAG, "Audio %s", muted ? "MUTED" : "ENABLED");
+                } else {
+                    raw_page = !raw_page;
+                    ESP_LOGI(TAG, "UI page: %s", raw_page ? "RAW" : "PERSIST");
+                }
+            }
+        }
+        touch_was_down = touch.touched;
+
+        if (do_zero) {
+            detector_zero_from_frame(&detector, &frame);
+            ESP_LOGI(TAG, "ZERO captured");
+        }
+
+        board_cyd35_set_feedback(frame.score, !muted);
+
+        /*
+         * Display/touch traffic happens only after detector_capture_frame().
+         * It therefore cannot occur inside the TX/decay sampling window.
+         * Refresh every second frame to reduce SPI activity during M0.
+         */
+        if ((frame_no & 1U) == 0U || touch.touched || do_zero) {
+            ESP_ERROR_CHECK(ui_cyd35_update(
+                &frame, muted, raw_page, touch.touched ? &touch : NULL));
+        }
 
         ESP_LOGI(
             TAG,
@@ -83,15 +130,8 @@ void app_main(void)
             frame.baseline_valid ? "" : " AUTOZERO");
 
         /*
-         * detector_capture_frame() already consumes about one frame interval.
-         * Yield briefly so lower-priority system tasks get CPU time.
-         */
-        /*
-         * One FreeRTOS tick, not pdMS_TO_TICKS(1).
-         *
-         * ESP-IDF defaults to a 100 Hz tick (10 ms). pdMS_TO_TICKS(1)
-         * therefore rounds to zero and does not block at all, starving IDLE0
-         * and eventually tripping the task watchdog.
+         * One FreeRTOS tick is 10 ms with the default 100 Hz tick. This gives
+         * IDLE0 enough CPU time to service the task watchdog.
          */
         vTaskDelay(1);
     }
