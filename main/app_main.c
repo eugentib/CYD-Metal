@@ -8,6 +8,7 @@
 
 #include "board_cyd35.h"
 #include "detector_core.h"
+#include "display_st7796.h"
 
 static const char *TAG = "CYD-Metal";
 
@@ -26,6 +27,11 @@ static esp_err_t detector_adc_adapter(void *ctx, int *raw)
 void app_main(void)
 {
     ESP_ERROR_CHECK(board_cyd35_init());
+
+    ESP_LOGI(TAG, "Initializing ST7796 display...");
+    ESP_ERROR_CHECK(display_st7796_init());
+    ESP_ERROR_CHECK(display_st7796_draw_bringup_screen());
+    ESP_LOGI(TAG, "Display bring-up pattern ready");
 
     detector_config_t cfg = detector_default_config();
     detector_io_t io = {
