@@ -1,96 +1,54 @@
-# M0 bring-up
+# CYD-Metal bring-up and RX validation
 
-The goal of M0 is not maximum detection depth. It is to establish clean, repeatable timing and record how the analog front-end behaves.
+**Updated 2026-10-13.** The CYD firmware, physical TX coil, BJT gate driver and BAV99 protection are already operating on the bench. The **next milestone is RX**, not a fresh TX build. Do not connect GPIO35 yet.
 
-## 1. CYD only
+## Bench baseline already established
 
-Flash with the detector hardware disconnected.
+- CYD ST7796 and touchscreen operate; GPIO22 drives the discrete BJT gate stage.
+- ~100 µs TX ON, ~5 ms repetition period (200 Hz), 16-pulse average.
+- Air-core 210 mm, 30 turns, 12.4 Ω, estimated ~364 µH.
+- Damping across coil **150 Ω**, replacing earlier 75 Ω.
+- At 23 V TX, oscilloscope DRAIN peaks: ~145 V with older 75 Ω; **~250 V with 150 Ω**.
+- BAV99 + **15 kΩ from DRAIN** RX limiter assembled and tested.
+- There is **no separate installed drain TVS/clamp**.
+- MCP602 analog amplifier has **not** been assembled; GPIO35 does not see the actual RX chain yet.
 
-Expected:
+See [hardware log](HARDWARE.md) and [gate driver](DISCRETE_BJT_DRIVER.md) for more detail.
 
-- serial log starts;
-- RGB LED is green;
-- no reset loop;
-- speaker is quiet at low score.
+## Before RX assembly
 
-The firmware auto-captures its first baseline frame. With the ADC floating this has no physical meaning; this step only checks firmware stability.
+1. Identify the exact MOSFET suffix and confirm allowed **VGS** and **VDS**, with margin. Gate was observed near 23 V in TX tests; check VGS relative to SOURCE.
+2. Use a scope probe rated for the observed drain peaks. Never attach an earth-referenced scope ground lead to DRAIN.
+3. With all other circuitry disconnected, confirm the actual BAV99 node behavior, diode orientation, DC level near TX rail and switching excursions.
+4. Keep CYD GPIO35 disconnected for every analog step below.
 
-## 2. TX output
+## 1. MCP602 supply only
 
-Connect detector ground to CYD ground.
+From CYD 3.3 V, fit the planned **22 Ω + 22 µF** RC filter and local **100 nF** bypass at pins 8/4. Check 3.3 V, ripple and turn-on behavior.
 
-Connect GPIO22 to the detector pulse-input node.
+## 2. Passive 1.65 V reference
 
-With an oscilloscope on GPIO22, expect approximately:
+Connect **10 kΩ / 10 kΩ** divider between filtered 3.3 V and GND with **10 µF + 100 nF** to GND at VREF; check the unloaded voltage and noise. Connect VREF to MCP602 A non-inverting pin 3. Do not leave the second amplifier inputs floating.
 
-- pulse width: 100 us;
-- repetition period: 5 ms;
-- PRF: 200 Hz.
+## 3. Design and test the AC-coupled gain stage
 
-Do not continue until the pulse is clean and the detector MOSFET gate/drain behavior is understood.
+Determine C_COUPLE, R_IN, R_F, input clamps, feedback compensation and bias/return paths from oscilloscope measurements of the BAV99-protected node. Those component values are **not yet finalized**. A limiter around a ~23 V DC node does not make it directly safe for a 3.3 V op-amp.
 
-## 3. Receiver output
+Measure MCP602 output on the scope while pulsing TX. Verify short recovery from TX OFF, especially at the target sample times of **40, 80, 130 and 200 µs**. Also observe the 300 µs tap.
 
-Keep GPIO35 disconnected.
+## 4. Validate ADC safety before wiring
 
-Probe the detector's conditioned analog output. Check that it is safe for the ESP32 ADC under all expected conditions.
+Candidate output filter: **1 kΩ** series from MCP602 OUT to ADC node, **1 nF** from the node to ground (tentative). Check scope waveforms for overshoot/undershoot, output clipping, startup/shutdown behavior and power sequencing. Provide additional protection where needed. Only then connect to **GPIO35 / ADC1_CH7**.
 
-Then connect:
+## 5. First metal measurements
 
-```text
-detector analog out -> CYD GPIO35
-detector GND        -> CYD GND
-```
+- Log no-target baseline, then a large steel/cast iron target at controlled distances.
+- Compare early, middle and late decay with the scope; note possible coil detuning or probe artifacts.
+- Once the analog output is safe, collect firmware raw taps and deltas, EARLY/MID/LATE, score, persistence and late-sample counts.
+- The existing M0 score is **diagnostic only**, not calibrated metal identification or detection depth.
 
-## 4. First real baseline
+## Parallel open issue: drain clamp
 
-Keep metal away from the coil and press BOOT briefly.
+Design a repetitive pulse overvoltage solution for the 600 V nominal MOSFET with reserve for possible lower-resistance ~0.5 mm coil. The old SMBJ100A proposal is **not currently installed**, and present ~250 V peak cannot be treated as a guaranteed future maximum.
 
-Serial should report:
-
-```text
-ZERO captured
-```
-
-The following frames should have small `d=[...]` values and a low score.
-
-## 5. Large-target test
-
-Move a steel plate, pan, manhole-like object or other large ferrous target toward the coil.
-
-Record:
-
-- raw taps;
-- differential taps;
-- EARLY;
-- MID;
-- LATE;
-- score;
-- persistence;
-- late sample count.
-
-The current taps are measured nominally at:
-
-```text
-40 us, 80 us, 130 us, 200 us, 300 us
-```
-
-after TX turns off.
-
-## 6. Timing quality
-
-`late=N` counts samples that started more than 15 us after their requested tap time.
-
-A few late samples in M0 are useful information. A high count means the oneshot ADC/API overhead is limiting us and confirms that we should move to ADC continuous/DMA capture.
-
-## What to send back after the first test
-
-Useful data for the next iteration:
-
-1. exact CYD model marking (for example ESP32-3248S035R or C);
-2. oscilloscope screenshot of GPIO22 pulse;
-3. oscilloscope screenshot of the conditioned analog output after TX-off;
-4. 10-20 serial lines with no target;
-5. 10-20 serial lines with a large steel target at a known distance.
-
-From that we can select better sample times and implement the DMA acquisition engine.
+See [RX design worklist](RX_MCP602.md).

@@ -1,53 +1,56 @@
-# Roadmap
+# Roadmap and verified status
 
-## M0 - timing and analog bring-up
+**Updated: 2026-10-13.** Software bring-up and the existing TX hardware have progressed further than the original M0 checklist. **RX analog acquisition has not yet been field-validated**.
 
-- [x] ESP-IDF project scaffold
-- [x] CYD 3.5 board profile
-- [x] TX pulse generation
-- [x] ADC1 / GPIO35 sampling
-- [x] five decay taps
-- [x] pulse averaging
-- [x] ZERO baseline
-- [x] EARLY/MID/LATE diagnostics
+## M0 — firmware, display and TX hardware
+
+- [x] ESP-IDF project scaffold, classic ESP32 and CYD 3.5 profile
+- [x] ST7796 working UI, touchscreen and screen controls
+- [x] TX pulse output on GPIO22: 100 µs / 200 Hz
+- [x] Software ADC sampling framework, five nominal taps, 16-pulse averaging
+- [x] ZERO/AUTOZERO, EARLY/MID/LATE, diagnostic score and logs
 - [x] RGB/audio feedback
-- [ ] verify on real CYD + Spirit PI front-end
+- [x] Discrete BJT gate driver assembled and observed with scope
+- [x] 13NK60 TX low-side stage and 210 mm coil assembled and tested
+- [x] 150 Ω damping fitted; ~250 V DRAIN peak measured at 23 V
+- [x] 15 kΩ + BAV99 RX input limiter assembled/tested
+- [ ] MCP602 RX amplifier assembled and validated
+- [ ] Safe conditioned RX connected to GPIO35
+- [ ] First reproducible metal-detection tests through the ADC
 
-## M1 - acquisition engine
+## M1 — analog safety and acquisition
 
-- [ ] replace oneshot sampling with ADC continuous/DMA
-- [ ] capture full decay waveform
-- [ ] hardware-timed TX scheduling
-- [ ] timing/lateness telemetry
-- [ ] configurable pulse width and PRF
-- [ ] configurable blanking/sample window
-- [ ] raw waveform serial export
+- [ ] Design and validate MOSFET DRAIN clamp for present and future coil
+- [ ] Complete MCP602 AC-coupled inverting gain, VREF and input protection
+- [ ] Measure RX settling/saturation, noise and target delta at 40–200 µs
+- [ ] Validate ADC protection, including startup/shutdown transients
+- [ ] Compare nominal ADC sample times to actual receiver response
+- [ ] Replace software oneshot sampling with improved hardware timing / ADC continuous-DMA if required
+- [ ] Adjustable pulse width, pulse repetition and sample window
+- [ ] Full waveform / raw data export and timing telemetry
 
-## M2 - CYD UI
+## M2 — CYD UI refinement
 
-- [x] ST7796 display driver
-- [x] resistive/capacitive touch board profile
-- [x] basic large target meter
-- [ ] live decay graph
-- [ ] baseline overlay
-- [ ] EARLY/MID/LATE bars
-- [x] ZERO button on screen
-- [ ] sensitivity and pulse settings
-- [x] basic mute control
+- [x] ST7796 display driver and touch
+- [x] Basic large target meter and diagnostic values
+- [x] ZERO, MUTE and RAW/PERSIST controls
+- [ ] Live decay graph and baseline overlay
+- [ ] EARLY/MID/LATE response bars
+- [ ] Sensitivity and TX-pulse configuration
+- [ ] Calibrated readings based on real receiver measurements
 
-## M3 - manhole-cover mode
+## M3 — buried manhole-cover trials
 
-- [ ] characterize reinforcing-bar response
-- [ ] characterize large cast-iron/steel cover response
-- [ ] persistence / decay-shape features
-- [ ] scan mode
-- [ ] optional spatial heat map
-- [ ] large-coil experiments
+- [ ] Identify true eddy-current response vs coil detuning / probe artifacts
+- [ ] Controlled-distance experiments on large iron/steel targets
+- [ ] Survey test location (reported as concrete without rebar or mesh)
+- [ ] Evaluate nearby cable/metal interference
+- [ ] Try ~0.5 mm wire coil and reassess energy, drain clamp and sensitivity
+- [ ] Scan mode / optional spatial heat map
 
-## M4 - headless build
+## M4 — portable/headless variants
 
-- [ ] ESP32 board profile
-- [ ] NeoPixel feedback
-- [ ] speaker/buzzer feedback
-- [ ] physical ZERO button
-- [ ] same detector_core without display dependencies
+- [ ] Makita 18 V battery input with fuse, undervoltage protection and DC/DC 5 V
+- [ ] Better isolation of high-current return from analog ground
+- [ ] Optional headless ESP32 + NeoPixel + speaker profile
+- [ ] Durable case, coil support and field operation

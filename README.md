@@ -1,93 +1,72 @@
 # CYD-Metal
 
-Experimental pulse-induction metal detector firmware for a **CYD 3.5" ESP32-3248S035** connected to a Spirit PI style analog/TX front-end.
+Experimental **pulse-induction (PI) metal detector** using a classic ESP32 and the **CYD 3.5" (ESP32-3248S035, 480 × 320)** display/touch board. The immediate target is a large buried cast-iron/steel manhole cover beneath unreinforced concrete. The project draws on the Spirit PI *hardware concept*, but its firmware is written independently.
 
-The project deliberately reuses the proven Spirit PI hardware concept but **does not reuse the original firmware**. The acquisition, signal processing, UI and feedback stack are being written from scratch.
+**Hardware status: 13 October 2026.** Firmware, touchscreen, TX switching stage and coil have been tested on real hardware. The **analog receiver is not yet complete or connected to GPIO35**. The current ADC/score values must not be interpreted as validated metal-detection performance.
 
-## Current milestone: M0 / bring-up
+## What works now
 
-The M0 firmware now includes a lightweight native ST7796 UI and touchscreen support, while keeping all display/touch traffic outside the TX/ADC sampling window. It focuses on the part that matters most for a PI detector:
+- ESP-IDF 5.4 firmware on classic ESP32; ST7796 UI and touchscreen.
+- On-screen ZERO / MUTE / RAW-PERSIST controls; AUTOZERO, score, EARLY / MID / LATE and logging.
+- GPIO22 TX: 100 µs pulse every 5 ms (200 Hz); 16 pulses averaged; five ADC tap times: 40 / 80 / 130 / 200 / 300 µs after TX OFF.
+- Discrete BJT gate driver (BC847A / BC807 / BC847A + BAT54), MOSFET from the 13NK60 600 V family, and a physical 210 mm coil; gate and drain observed on an oscilloscope.
+- BAV99 receiver-input limiting network with a 15 kΩ resistor from DRAIN is physically assembled and tested.
 
-- deterministic TX pulse generation;
-- five ADC samples from the decay after TX turns off;
-- multi-pulse averaging;
-- ZERO/baseline capture;
-- EARLY / MID / LATE response values;
-- a simple target score and persistence metric;
-- CYD RGB LED and speaker feedback;
-- serial logging for oscilloscope-assisted tuning;\n- ST7796 live screen with SCORE / EARLY / MID / LATE;\n- touch autodetection for XPT2046 (R) or GT911 (C);\n- on-screen ZERO, MUTE and RAW/PERSIST controls.
+## Bench measurements (not design estimates)
 
-Once the analog timing is stable we will replace the five-tap ADC acquisition with continuous/DMA capture and then add the ST7796 display/touch UI.
+| Item | Observed value / status |
+|---|---|
+| Coil | 210 mm diameter, 30 turns, ~0.19 mm enamelled copper wire |
+| Coil DC resistance | 12.4 Ω |
+| Estimated inductance | ~364 µH, based on an external-capacitor resonance test |
+| Natural resonance | ~824 kHz with x10 scope probe |
+| Estimated effective parasitic capacitance | ~103 pF including wiring and probe |
+| TX rail during drain tests | 23 V |
+| Damping resistor presently installed | **150 Ω across coil** |
+| DRAIN peak at 23 V, with 75 Ω (older test) | ~145 V |
+| DRAIN peak at 23 V, with **150 Ω (current)** | **~250 V** |
+| Separate drain TVS/clamp | **Not fitted; still to be designed** |
 
-## Assumed CYD board
+The TX driver is currently supplied from the TX rail (not a dedicated 12 V supply). Gate voltage reached approximately 23 V during tests; actual VGS, including transients, must remain within the **exact installed MOSFET's** datasheet limit. The finished portable unit is intended to use a nominal 18 V Makita battery (~21 V fully charged).
 
-Sunton-style **ESP32-3248S035R/C**, classic ESP32-WROOM-32.
+## Work in progress: MCP602 analog receiver
 
-Current pin profile:
+The already-tested **DRAIN → 15 kΩ → BAV99-limited RX node** will be AC-coupled into a **3.3 V MCP602** inverting amplifier, with a passive and decoupled **1.65 V reference**. Gain, coupling capacitor, input clamps and recovery behavior must still be determined experimentally. A provisional output network is **1 kΩ series to GPIO35, 1 nF to ground**, subject to validation and input safety checks.
+
+**Do not connect GPIO35 yet.** Test the RX output with an oscilloscope during switching, power-up, power-down and target approach; ensure ADC-safe voltage for all operating conditions.
+
+See [hardware measurements and architecture](docs/HARDWARE.md), [TX BJT driver](docs/DISCRETE_BJT_DRIVER.md), [MCP602 receiver plan](docs/RX_MCP602.md), [bring-up procedure](docs/BRINGUP.md) and [roadmap](docs/ROADMAP.md).
+
+## CYD pin profile
 
 | Function | GPIO |
 |---|---:|
-| PI pulse output | 22 |
-| PI analog input | 35 / ADC1_CH7 |
-| Onboard audio amplifier | 26 |
-| RGB red | 4 |
-| RGB green | 16 |
-| RGB blue | 17 |
-| BOOT / ZERO button | 0 |
+| PI TX pulse | 22 |
+| Conditioned RX ADC (not connected yet) | 35 / ADC1_CH7 |
+| Audio amplifier input | 26 |
+| RGB red / green / blue | 4 / 16 / 17 |
+| BOOT / ZERO | 0 |
 | TFT backlight | 27 |
-
-GPIO35 is input-only and is exposed on P3. GPIO22 is also exposed on P3.
-
-## Wiring for M0
-
-CYD P3 to detector front-end:
-
-- **GND -> GND**
-- **GPIO22 -> Spirit PI pulse input**
-- **GPIO35 -> Spirit PI analog output**
-
-Power the Spirit PI analog/TX front-end from its own appropriate supply. Power the CYD from 5 V. Grounds must be common.
-
-**Before connecting GPIO35, verify with an oscilloscope that the analog output is always within the ESP32 ADC range and never contains the MOSFET drain flyback pulse.**
 
 ## Build
 
-Requirements:
-
-- ESP-IDF 5.2 or newer
-- target: classic ESP32
+Requirements: ESP-IDF **5.4** as used in the current project, classic ESP32 target.
 
 ```bash
 git clone https://github.com/eugentib/CYD-Metal.git
 cd CYD-Metal
-
 idf.py set-target esp32
 idf.py build
 idf.py -p COMx flash monitor
 ```
 
-On Linux, replace `COMx` with the serial device such as `/dev/ttyUSB0`.
+On Linux replace `COMx` with the serial device (for example `/dev/ttyUSB0`).
 
-## First test
+## Next priorities
 
-1. Flash the CYD with the detector front-end disconnected.
-2. Confirm serial boot and RGB feedback.
-3. Connect common GND.
-4. Connect GPIO22 to the pulse input and inspect the pulse with an oscilloscope.
-5. Only after checking the conditioned analog output, connect it to GPIO35.
-6. With no metal near the coil, press **BOOT** briefly to ZERO.
-7. Move a large steel object toward the coil and observe the five ADC taps and score in the serial log.
+1. Assemble and characterize the MCP602 analog RX signal chain **without connecting the ESP32 ADC**.
+2. Design a real MOSFET overvoltage clamp with headroom for the planned lower-resistance coil; verify repetitive pulse energy and safe voltage.
+3. Validate metal response at controlled distances; then connect conditioned RX to GPIO35 and tune sampling.
+4. Optionally wind a ~0.5 mm wire coil and compare field strength, decay and losses.
 
-See [docs/BRINGUP.md](docs/BRINGUP.md) for the detailed procedure.
-
-## Design direction
-
-The detector core is independent from the future UI. The same processing code should later build for:
-
-- CYD 3.5" with display/touch/audio;
-- headless ESP32 + NeoPixel + speaker;
-- other ESP32 boards with a compatible ADC/TX interface.
-
-## Status
-
-Prototype software. Do not treat the current score or "persistence" metric as metal identification; they are diagnostics until we collect real waveforms from the target and the reinforced concrete environment.
+Until the receiver is characterized, this remains an experimental instrument, **not a verified underground utility locator**.
