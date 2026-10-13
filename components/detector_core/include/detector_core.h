@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define DETECTOR_TAP_COUNT 5
+#define DETECTOR_TAP_COUNT 3
 
 typedef esp_err_t (*detector_adc_read_fn)(void *ctx, int *raw);
 typedef esp_err_t (*detector_tx_frame_start_fn)(void *ctx, uint8_t pulses,
