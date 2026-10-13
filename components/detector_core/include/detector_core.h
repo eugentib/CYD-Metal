@@ -12,16 +12,10 @@ extern "C" {
 #define DETECTOR_TAP_COUNT 3
 
 typedef esp_err_t (*detector_adc_read_fn)(void *ctx, int *raw);
-typedef esp_err_t (*detector_tx_frame_start_fn)(void *ctx, uint8_t pulses,
-                                               uint32_t width_us,
-                                               uint32_t period_us);
 typedef esp_err_t (*detector_tx_wait_off_fn)(void *ctx, int64_t *tx_off_us);
-typedef esp_err_t (*detector_tx_frame_finish_fn)(void *ctx);
 
 typedef struct {
-    detector_tx_frame_start_fn tx_frame_start;
     detector_tx_wait_off_fn tx_wait_off;
-    detector_tx_frame_finish_fn tx_frame_finish;
     detector_adc_read_fn adc_read;
     void *ctx;
 } detector_io_t;
