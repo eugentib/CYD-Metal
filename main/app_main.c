@@ -5,6 +5,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 #include "board_cyd35.h"
 #include "detector_core.h"
@@ -13,6 +15,94 @@
 #include "ui_cyd35.h"
 
 static const char *TAG = "CYD-Metal";
+
+/* NVS writes one compact versioned blob per confirmed touch change.
+ * Stored settings are restored before RMT is started at boot. */
+#define SETTINGS_MAGIC 0x43594D31UL  /* "CYM1" */
+#define SETTINGS_NAMESPACE "cyd_metal"
+#define SETTINGS_KEY "acq"
+
+typedef struct {
+    uint32_t magic;
+    uint32_t tx_width_us;
+    uint16_t first_tap_us;
+    uint8_t moving_avg_frames;
+    uint8_t reserved;
+} stored_settings_t;
+
+static bool supported_tap(uint16_t tap)
+{
+    static const uint16_t taps[] = {10, 15, 20, 25, 30, 40, 50, 60};
+    for (size_t i = 0; i < sizeof(taps) / sizeof(taps[0]); ++i) {
+        if (taps[i] == tap) return true;
+    }
+    return false;
+}
+
+static bool stored_settings_valid(const stored_settings_t *settings)
+{
+    return settings->magic == SETTINGS_MAGIC &&
+           (settings->tx_width_us == 25 ||
+            settings->tx_width_us == 50 ||
+            settings->tx_width_us == 75 ||
+            settings->tx_width_us == 100) &&
+           supported_tap(settings->first_tap_us) &&
+           (settings->moving_avg_frames == 5 ||
+            settings->moving_avg_frames == 10);
+}
+
+static void load_acquisition_settings(detector_config_t *cfg)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(SETTINGS_NAMESPACE, NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "NVS: no saved acquisition settings, using defaults");
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "NVS open failed (%s); using defaults",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    stored_settings_t settings = {0};
+    size_t size = sizeof(settings);
+    err = nvs_get_blob(handle, SETTINGS_KEY, &settings, &size);
+    nvs_close(handle);
+    if (err == ESP_OK && size == sizeof(settings) &&
+        stored_settings_valid(&settings)) {
+        cfg->pulse_width_us = settings.tx_width_us;
+        cfg->moving_avg_frames = settings.moving_avg_frames;
+        for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
+            cfg->tap_us[i] = (uint16_t)(settings.first_tap_us * (i + 1));
+        }
+        ESP_LOGI(TAG, "NVS restored: TX=%" PRIu32 "us taps=%u/%u/%u avg=%u",
+                 cfg->pulse_width_us, cfg->tap_us[0], cfg->tap_us[1],
+                 cfg->tap_us[2], cfg->moving_avg_frames);
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "NVS stored settings invalid (%s), using defaults",
+                 esp_err_to_name(err));
+    }
+}
+
+static esp_err_t save_acquisition_settings(const detector_config_t *cfg)
+{
+    const stored_settings_t settings = {
+        .magic = SETTINGS_MAGIC,
+        .tx_width_us = cfg->pulse_width_us,
+        .first_tap_us = cfg->tap_us[0],
+        .moving_avg_frames = cfg->moving_avg_frames,
+        .reserved = 0,
+    };
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(SETTINGS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(handle, SETTINGS_KEY, &settings, sizeof(settings));
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err;
+}
+
 
 static esp_err_t detector_tx_wait_off_adapter(void *ctx, int64_t *tx_off_us)
 {
@@ -28,6 +118,12 @@ static esp_err_t detector_adc_adapter(void *ctx, int *raw)
 
 void app_main(void)
 {
+    /*
+     * Initialize settings storage independently of acquisition hardware.
+     * If NVS needs migration after partition-table changes, do not erase
+     * automatically: preserve user-selected settings and report the error.
+     */
+    ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(board_cyd35_init());
 
     ESP_LOGI(TAG, "Initializing ST7796 display...");
@@ -41,6 +137,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Live detector UI ready");
 
     detector_config_t cfg = detector_default_config();
+    load_acquisition_settings(&cfg);
     detector_io_t io = {
         .tx_wait_off = detector_tx_wait_off_adapter,
         .adc_read = detector_adc_adapter,
@@ -144,30 +241,35 @@ void app_main(void)
                 if (next_width != detector.cfg.pulse_width_us ||
                     next_first != detector.cfg.tap_us[0] ||
                     next_avg != detector.cfg.moving_avg_frames) {
-                    bool change_tx =
+                    const bool change_tx =
                         next_width != detector.cfg.pulse_width_us;
-                    ESP_ERROR_CHECK(detector_update_settings(
-                        &detector, next_width, next_first, next_avg));
 
                     if (change_tx) {
-                        /*
-                         * The hardware loop is briefly stopped ONLY when
-                         * the user selects a different TX width. Keep
-                         * frequency at 200Hz and restore RMT output.
-                         */
+                        /* RMT only restarts when pulse width changes. */
                         ESP_ERROR_CHECK(board_cyd35_tx_stop());
                         ESP_ERROR_CHECK(board_cyd35_tx_start_continuous(
                             next_width, detector.cfg.pulse_period_us));
                     }
+
+                    ESP_ERROR_CHECK(detector_update_settings(
+                        &detector, next_width, next_first, next_avg));
                     settings_changed = true;
+
+                    /* Persist only after the settings and TX are applied.
+                     * On flash error, keep operating with RAM values. */
+                    esp_err_t save_err =
+                        save_acquisition_settings(&detector.cfg);
+                    if (save_err != ESP_OK) {
+                        ESP_LOGE(TAG, "Settings work now but NVS SAVE FAILED: %s",
+                                 esp_err_to_name(save_err));
+                    }
                     ESP_LOGI(TAG,
                              "CONFIG TX=%" PRIu32 "us taps=%u/%u/%uus"
-                             " avg=%u frames, 16 pulses/frame",
-                             next_width,
-                             detector.cfg.tap_us[0],
+                             " avg=%u frames, 16 pulses/frame NVS=%s",
+                             next_width, detector.cfg.tap_us[0],
                              detector.cfg.tap_us[1],
-                             detector.cfg.tap_us[2],
-                             next_avg);
+                             detector.cfg.tap_us[2], next_avg,
+                             save_err == ESP_OK ? "SAVED" : "ERROR");
                 }
             } else if (touch.y >= 255) {
                 if (touch.x < 160) {
