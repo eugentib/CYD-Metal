@@ -56,3 +56,11 @@ See [RX design worklist](RX_MCP602.md).
 ## SET-screen validation (live timing firmware)
 
 Before applying TX power, check GPIO22 on a scope: select 25, 50, 75 and 100 µs pulse widths and confirm that the HIGH times change and the period remains 5 ms. Reconfiguration causes a brief intentional pause. Check 10/20/30 and 30/60/90 µs ADC settings via the startup/configuration log; watch LATE and MAX after enabling the receiver. With a stationary coil, select AVG 5 then AVG 10 to compare displayed noise against response latency. The new controls have not yet passed compilation or on-board verification.
+
+## Timing rejection and nonvolatile settings (experimental)
+
+- A sample is accepted only when the software ADC call is initiated within **0–1 µs after** the selected GPIO22 falling-edge-relative target. The ADC internal sample instant cannot be guaranteed; the `ADC` metric reports the worst call duration.
+- A frame is valid only if **each** of the t/2t/3t windows has at least **8 accepted ADC calls** out of 16. Otherwise `ADC TIMING SKIP` appears and no score, moving average, or ZERO baseline is updated. `OK a/b/c`, `LATE`, `MAX`, and `ADC` quantify timing misses.
+- With **10/20/30 µs** taps, if `ADC TIMING SKIP` appears consistently, first inspect `OK` counts and `ADC` runtime. A conversion lasting longer than the gap between taps cannot be made deterministic merely by filtering. Choose a later first tap until the acquisition mechanism is improved.
+- Settings are committed automatically to **NVS** (namespace `cyd_metal`, one versioned `acq` blob): TX width, first ADC tap, moving-average window. Power-cycle to verify they persist. The stored record is read before RMT TX starts. NVS erase/flash erase resets settings.
+- Flashing the new build and testing this timing/persistence revision are still pending.
