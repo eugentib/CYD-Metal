@@ -1,10 +1,22 @@
 #include "board_cyd35.h"
 
 #include "driver/ledc.h"
+#include "driver/rmt_tx.h"
+#include "driver/rmt_encoder.h"
+#include "esp_timer.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_check.h"
 
 static adc_oneshot_unit_handle_t s_adc1;
+
+/* One RMT symbol (1 MHz clock) describes an entire 5 ms PI cycle.
+ * Static storage stays valid until the RMT transfer has completed. */
+#define TX_RMT_RESOLUTION_HZ 1000000UL
+#define TX_MAX_PULSES UINT8_MAX
+static rmt_channel_handle_t s_tx_rmt;
+static rmt_encoder_handle_t s_tx_encoder;
+static rmt_symbol_word_t s_tx_symbols[TX_MAX_PULSES];
+static uint32_t s_tx_period_us;
 
 #define AUDIO_LEDC_MODE      LEDC_LOW_SPEED_MODE
 #define AUDIO_LEDC_TIMER     LEDC_TIMER_0
@@ -57,8 +69,38 @@ esp_err_t board_cyd35_init(void)
     };
     ESP_RETURN_ON_ERROR(gpio_config(&outputs), "board", "output gpio config failed");
 
-    board_cyd35_tx_set(false);
+    gpio_set_level(BOARD_CYD35_TX_GPIO, 0);
     rgb_off();
+
+    /*
+     * Hardware RMT owns the TX edges. A 1 MHz timebase gives exact 1 us
+     * waveform ticks independently of FreeRTOS scheduling and interrupts.
+     */
+    const rmt_tx_channel_config_t rmt_cfg = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .gpio_num = BOARD_CYD35_TX_GPIO,
+        .mem_block_symbols = 64,
+        .resolution_hz = TX_RMT_RESOLUTION_HZ,
+        .trans_queue_depth = 1,
+    };
+    ESP_RETURN_ON_ERROR(
+        rmt_new_tx_channel(&rmt_cfg, &s_tx_rmt),
+        "board", "RMT TX channel init failed");
+
+    const rmt_copy_encoder_config_t encoder_cfg = {0};
+    ESP_RETURN_ON_ERROR(
+        rmt_new_copy_encoder(&encoder_cfg, &s_tx_encoder),
+        "board", "RMT TX encoder init failed");
+    ESP_RETURN_ON_ERROR(
+        rmt_enable(s_tx_rmt), "board", "RMT TX enable failed");
+
+    /*
+     * RMT drives GPIO22 through the output matrix. Enable pad input as
+     * well so the capture task can observe actual HIGH/LOW transitions.
+     */
+    ESP_RETURN_ON_ERROR(
+        gpio_input_enable(BOARD_CYD35_TX_GPIO),
+        "board", "RMT TX readback enable failed");
 
     const gpio_config_t button = {
         .pin_bit_mask = 1ULL << BOARD_CYD35_ZERO_GPIO,
@@ -112,9 +154,78 @@ esp_err_t board_cyd35_init(void)
     return ESP_OK;
 }
 
-void board_cyd35_tx_set(bool high)
+esp_err_t board_cyd35_tx_frame_start(uint8_t pulses,
+                                     uint32_t width_us,
+                                     uint32_t period_us)
 {
-    gpio_set_level(BOARD_CYD35_TX_GPIO, high ? 1 : 0);
+    if (!s_tx_rmt || !s_tx_encoder || pulses == 0 ||
+        width_us == 0 || width_us >= period_us ||
+        width_us > 32767U || period_us - width_us > 32767U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Never overwrite RMT's payload before the previous burst ends. */
+    esp_err_t err = rmt_tx_wait_all_done(s_tx_rmt, 100);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    for (uint16_t i = 0; i < pulses; ++i) {
+        s_tx_symbols[i] = (rmt_symbol_word_t) {
+            .level0 = 1,
+            .duration0 = (uint16_t)width_us,
+            .level1 = 0,
+            .duration1 = (uint16_t)(period_us - width_us),
+        };
+    }
+    s_tx_period_us = period_us;
+
+    const rmt_transmit_config_t tx_cfg = {
+        .loop_count = 0,
+        .eot_level = 0,
+    };
+    return rmt_transmit(s_tx_rmt, s_tx_encoder, s_tx_symbols,
+                        (size_t)pulses * sizeof(s_tx_symbols[0]), &tx_cfg);
+}
+
+esp_err_t board_cyd35_tx_wait_off(int64_t *tx_off_us)
+{
+    if (!tx_off_us || !s_tx_period_us) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /*
+     * The TX transaction starts asynchronously. Observe GPIO22 going
+     * HIGH and then LOW. Sampling is anchored to the actual falling
+     * edge, not to software's request to start a pulse.
+     * A missed edge yields a timeout rather than silently sampling
+     * the wrong part of the period.
+     */
+    int64_t deadline = esp_timer_get_time() + s_tx_period_us + 2000;
+    while (gpio_get_level(BOARD_CYD35_TX_GPIO) == 0) {
+        if (esp_timer_get_time() >= deadline) {
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+
+    deadline = esp_timer_get_time() + 2000;
+    while (gpio_get_level(BOARD_CYD35_TX_GPIO) != 0) {
+        if (esp_timer_get_time() >= deadline) {
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+
+    *tx_off_us = esp_timer_get_time();
+    return ESP_OK;
+}
+
+esp_err_t board_cyd35_tx_frame_finish(void)
+{
+    if (!s_tx_rmt) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    /* The final symbol includes the remaining LOW portion of the cycle. */
+    return rmt_tx_wait_all_done(s_tx_rmt, 100);
 }
 
 esp_err_t board_cyd35_adc_read(int *raw)
