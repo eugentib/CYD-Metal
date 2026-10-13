@@ -14,25 +14,10 @@
 
 static const char *TAG = "CYD-Metal";
 
-static esp_err_t detector_tx_frame_start_adapter(void *ctx,
-                                                 uint8_t pulses,
-                                                 uint32_t width_us,
-                                                 uint32_t period_us)
-{
-    (void)ctx;
-    return board_cyd35_tx_frame_start(pulses, width_us, period_us);
-}
-
 static esp_err_t detector_tx_wait_off_adapter(void *ctx, int64_t *tx_off_us)
 {
     (void)ctx;
     return board_cyd35_tx_wait_off(tx_off_us);
-}
-
-static esp_err_t detector_tx_frame_finish_adapter(void *ctx)
-{
-    (void)ctx;
-    return board_cyd35_tx_frame_finish();
 }
 
 static esp_err_t detector_adc_adapter(void *ctx, int *raw)
@@ -57,9 +42,7 @@ void app_main(void)
 
     detector_config_t cfg = detector_default_config();
     detector_io_t io = {
-        .tx_frame_start = detector_tx_frame_start_adapter,
         .tx_wait_off = detector_tx_wait_off_adapter,
-        .tx_frame_finish = detector_tx_frame_finish_adapter,
         .adc_read = detector_adc_adapter,
         .ctx = NULL,
     };
@@ -67,7 +50,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(detector_init(&detector, &cfg, &io));
 
-    ESP_LOGI(TAG, "CYD-Metal M0 starting (RMT hardware-timed TX)");
+    ESP_LOGI(TAG, "CYD-Metal M0 starting (continuous RMT hardware TX)");
     ESP_LOGI(TAG, "TX GPIO=%d, ADC GPIO=%d / ADC1_CH7",
              BOARD_CYD35_TX_GPIO, BOARD_CYD35_ADC_GPIO);
     ESP_LOGI(TAG, "BOOT or on-screen ZERO captures the baseline");
@@ -78,6 +61,14 @@ void app_main(void)
              1000000UL / cfg.pulse_period_us,
              cfg.pulses_per_frame);
 
+    /*
+     * Start hardware TX once. It continues at 200 Hz during touchscreen,
+     * LCD updates, logging, and vTaskDelay. ADC observes 16 cycles per
+     * calculation without stopping/restarting the waveform.
+     */
+    ESP_ERROR_CHECK(board_cyd35_tx_start_continuous(
+        cfg.pulse_width_us, cfg.pulse_period_us));
+
     bool button_was_down = false;
     bool touch_was_down = false;
     bool muted = false;
@@ -86,7 +77,11 @@ void app_main(void)
 
     while (true) {
         detector_frame_t frame;
-        ESP_ERROR_CHECK(detector_capture_frame(&detector, &frame));
+        esp_err_t capture_err = detector_capture_frame(&detector, &frame);
+        if (capture_err != ESP_OK) {
+            (void)board_cyd35_tx_stop();
+            ESP_ERROR_CHECK(capture_err);
+        }
 
         bool do_zero = false;
 
@@ -125,9 +120,9 @@ void app_main(void)
         board_cyd35_set_feedback(frame.score, !muted);
 
         /*
-         * Display/touch traffic happens only after detector_capture_frame().
-         * It therefore cannot occur inside the TX/decay sampling window.
-         * Refresh every second frame to reduce SPI activity during M0.
+         * Display/touch traffic happens outside the ADC capture loop.
+         * RMT TX continues to pulse while the UI is being updated.
+         * Refresh every second frame to reduce digital pickup during M0.
          */
         if ((frame_no & 1U) == 0U || touch.touched || do_zero) {
             ESP_ERROR_CHECK(ui_cyd35_update(
