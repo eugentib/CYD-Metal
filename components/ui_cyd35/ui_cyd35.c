@@ -115,12 +115,14 @@ static esp_err_t draw_settings(const detector_config_t *cfg)
     }
 
     ESP_ERROR_CHECK(draw_button(
-        10, 264, 145, 48, cfg->moving_avg_frames == 5 ? C_GREEN : C_BLUE,
+        10, 264, 145, 48, cfg->moving_avg_frames == 1 ? C_GREEN : C_BLUE,
+        "AVG OFF"));
+    ESP_ERROR_CHECK(draw_button(
+        167, 264, 145, 48, cfg->moving_avg_frames == 5 ? C_GREEN : C_BLUE,
         "AVG 5"));
     ESP_ERROR_CHECK(draw_button(
-        167, 264, 145, 48, cfg->moving_avg_frames == 10 ? C_GREEN : C_BLUE,
+        324, 264, 145, 48, cfg->moving_avg_frames == 10 ? C_GREEN : C_BLUE,
         "AVG 10"));
-    ESP_ERROR_CHECK(draw_button(324, 264, 145, 48, C_CYAN, "BACK"));
     return ESP_OK;
 }
 
