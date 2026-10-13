@@ -35,7 +35,8 @@ esp_err_t detector_init(detector_t *detector,
     }
 
     if (config->tap_us[0] == 0 ||
-        config->tap_us[DETECTOR_TAP_COUNT - 1] >= config->pulse_period_us) {
+        config->pulse_width_us + config->tap_us[DETECTOR_TAP_COUNT - 1] >=
+            config->pulse_period_us) {
         return ESP_ERR_INVALID_ARG;
     }
 
