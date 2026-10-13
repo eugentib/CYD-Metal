@@ -52,3 +52,7 @@ Candidate output filter: **1 kΩ** series from MCP602 OUT to ADC node, **1 nF** 
 Design a repetitive pulse overvoltage solution for the 600 V nominal MOSFET with reserve for possible lower-resistance ~0.5 mm coil. The old SMBJ100A proposal is **not currently installed**, and present ~250 V peak cannot be treated as a guaranteed future maximum.
 
 See [RX design worklist](RX_MCP602.md).
+
+## SET-screen validation (live timing firmware)
+
+Before applying TX power, check GPIO22 on a scope: select 25, 50, 75 and 100 µs pulse widths and confirm that the HIGH times change and the period remains 5 ms. Reconfiguration causes a brief intentional pause. Check 10/20/30 and 30/60/90 µs ADC settings via the startup/configuration log; watch LATE and MAX after enabling the receiver. With a stationary coil, select AVG 5 then AVG 10 to compare displayed noise against response latency. The new controls have not yet passed compilation or on-board verification.
