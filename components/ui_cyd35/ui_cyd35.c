@@ -155,6 +155,26 @@ esp_err_t ui_cyd35_update(const detector_frame_t *frame,
 
     char s[80];
 
+    if (!frame->data_valid) {
+        /* No fake zero-valued measurement: show the rejected frame clearly. */
+        ESP_ERROR_CHECK(display_st7796_fill_rect(12, 46, 456, 207, C_BLACK));
+        ESP_ERROR_CHECK(display_st7796_draw_text(
+            16, 59, 3, C_RED, "ADC TIMING SKIP"));
+        snprintf(s, sizeof(s), "VALID %u/%u  %u/%u  %u/%u",
+                 frame->accepted_samples[0], config->pulses_per_frame,
+                 frame->accepted_samples[1], config->pulses_per_frame,
+                 frame->accepted_samples[2], config->pulses_per_frame);
+        ESP_ERROR_CHECK(display_st7796_draw_text(
+            16, 126, 2, C_WHITE, s));
+        snprintf(s, sizeof(s), "MAX LATE %uUS  ADC %uUS",
+                 frame->max_late_us, frame->max_adc_us);
+        ESP_ERROR_CHECK(display_st7796_draw_text(
+            16, 170, 2, C_YELLOW, s));
+        ESP_ERROR_CHECK(display_st7796_draw_text(
+            16, 219, 1, C_GRAY, "MOVE TAP LATER IF REPEATED"));
+        return ESP_OK;
+    }
+
     ESP_ERROR_CHECK(display_st7796_fill_rect(125, 48, 335, 58, C_BLACK));
     snprintf(s, sizeof(s), "%u", frame->score);
     ESP_ERROR_CHECK(display_st7796_draw_text(130, 54, 5,
@@ -184,9 +204,11 @@ esp_err_t ui_cyd35_update(const detector_frame_t *frame,
                  config->tap_us[2], frame->raw[2]);
         ESP_ERROR_CHECK(display_st7796_draw_text(16, 218, 1, C_WHITE, s));
     } else {
-        snprintf(s, sizeof(s), "AVG %u/%u  LATE %u MAX %uUS",
-                 frame->frames_averaged, config->moving_avg_frames,
-                 frame->late_samples, frame->max_late_us);
+        snprintf(s, sizeof(s), "OK %u/%u/%u LATE %u MAX %uUS ADC %uUS",
+                 frame->accepted_samples[0],
+                 frame->accepted_samples[1],
+                 frame->accepted_samples[2],
+                 frame->late_samples, frame->max_late_us, frame->max_adc_us);
         ESP_ERROR_CHECK(display_st7796_draw_text(16, 218, 1, C_WHITE, s));
     }
 
