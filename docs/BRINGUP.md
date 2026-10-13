@@ -5,13 +5,13 @@
 ## Bench baseline already established
 
 - CYD ST7796 and touchscreen operate; GPIO22 drives the discrete BJT gate stage.
-- ~100 µs TX ON, ~5 ms repetition period (200 Hz), 16-pulse average.
+- RMT-based TX firmware change: 100 µs HIGH, 4,900 µs LOW (200 Hz) in hardware; 16-pulse burst. **Hardware scope verification is still pending.**
 - Air-core 210 mm, 30 turns, 12.4 Ω, estimated ~364 µH.
 - Damping across coil **150 Ω**, replacing earlier 75 Ω.
 - At 23 V TX, oscilloscope DRAIN peaks: ~145 V with older 75 Ω; **~250 V with 150 Ω**.
 - BAV99 + **15 kΩ from DRAIN** RX limiter assembled and tested.
 - There is **no separate installed drain TVS/clamp**.
-- MCP602 analog amplifier has **not** been assembled; GPIO35 does not see the actual RX chain yet.
+- MCP602 analog RX is on the bench with **Rin 47 kΩ, Rf 180 kΩ, coupling C 85 nF** and antiparallel feedback limiter diodes; recovery is being tuned. **GPIO35 must remain disconnected until the signal is validated safe.**
 
 See [hardware log](HARDWARE.md) and [gate driver](DISCRETE_BJT_DRIVER.md) for more detail.
 
