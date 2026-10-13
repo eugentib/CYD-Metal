@@ -71,6 +71,8 @@ void app_main(void)
     ESP_LOGI(TAG, "TX GPIO=%d, ADC GPIO=%d / ADC1_CH7",
              BOARD_CYD35_TX_GPIO, BOARD_CYD35_ADC_GPIO);
     ESP_LOGI(TAG, "BOOT or on-screen ZERO captures the baseline");
+    ESP_LOGI(TAG, "ADC taps after TX OFF: %u / %u / %u us",
+             cfg.tap_us[0], cfg.tap_us[1], cfg.tap_us[2]);
     ESP_LOGI(TAG, "pulse=%" PRIu32 " us, PRF=%" PRIu32 " Hz, averages=%u",
              cfg.pulse_width_us,
              1000000UL / cfg.pulse_period_us,
@@ -135,12 +137,12 @@ void app_main(void)
         ESP_LOGI(
             TAG,
             "f=%" PRIu32
-            " raw=[%4u,%4u,%4u,%4u,%4u]"
-            " d=[%4d,%4d,%4d,%4d,%4d]"
+            " raw=[%4u,%4u,%4u]"
+            " d=[%4d,%4d,%4d]"
             " E=%3u M=%3u L=%3u score=%3u persist=%3u%% late=%u%s",
             frame_no++,
-            frame.raw[0], frame.raw[1], frame.raw[2], frame.raw[3], frame.raw[4],
-            frame.diff[0], frame.diff[1], frame.diff[2], frame.diff[3], frame.diff[4],
+            frame.raw[0], frame.raw[1], frame.raw[2],
+            frame.diff[0], frame.diff[1], frame.diff[2],
             frame.early, frame.mid, frame.late,
             frame.score, frame.persistence_pct,
             frame.late_samples,
