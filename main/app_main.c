@@ -286,8 +286,12 @@ void app_main(void)
         touch_was_down = touch.touched;
 
         if (do_zero) {
-            detector_zero_from_frame(&detector, &frame);
-            ESP_LOGI(TAG, "ZERO captured");
+            if (frame.data_valid) {
+                detector_zero_from_frame(&detector, &frame);
+                ESP_LOGI(TAG, "ZERO captured");
+            } else {
+                ESP_LOGW(TAG, "ZERO ignored: insufficient on-time ADC reads");
+            }
         }
 
         board_cyd35_set_feedback(frame.score, !muted);
@@ -310,15 +314,22 @@ void app_main(void)
             " raw=[%4u,%4u,%4u]"
             " d=[%4d,%4d,%4d]"
             " E=%3u M=%3u L=%3u score=%3u persist=%3u%%"
-            " avg=%u/%u late=%u maxlate=%uus%s",
+            " avg=%u/%u ok=[%u,%u,%u]/%u"
+            " reject=[%u,%u,%u] late=%u maxlate=%uus"
+            " adcmax=%uus%s%s",
             frame_no++,
             frame.raw[0], frame.raw[1], frame.raw[2],
             frame.diff[0], frame.diff[1], frame.diff[2],
             frame.early, frame.mid, frame.late,
             frame.score, frame.persistence_pct,
             frame.frames_averaged, detector.cfg.moving_avg_frames,
-            frame.late_samples, frame.max_late_us,
-            frame.baseline_valid ? "" : " AUTOZERO");
+            frame.accepted_samples[0], frame.accepted_samples[1],
+            frame.accepted_samples[2], detector.cfg.pulses_per_frame,
+            frame.rejected_samples[0], frame.rejected_samples[1],
+            frame.rejected_samples[2],
+            frame.late_samples, frame.max_late_us, frame.max_adc_us,
+            frame.baseline_valid ? "" : " AUTOZERO",
+            frame.data_valid ? "" : " TIMING_SKIP");
 
         /*
          * One FreeRTOS tick is 10 ms with the default 100 Hz tick. This gives
