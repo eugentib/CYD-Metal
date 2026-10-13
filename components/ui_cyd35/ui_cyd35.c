@@ -36,7 +36,7 @@ static esp_err_t draw_button(int x, int y, int w, int h,
 
 esp_err_t ui_cyd35_init(const char *touch_name)
 {
-    if (touch_name) {
+    if (touch_name && touch_name != s_touch_name) {
         snprintf(s_touch_name, sizeof(s_touch_name), "%s", touch_name);
     }
     s_was_settings = false;
