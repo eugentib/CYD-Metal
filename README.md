@@ -7,10 +7,24 @@ Experimental **pulse-induction (PI) metal detector** using a classic ESP32 and t
 ## What works now
 
 - ESP-IDF 5.4 firmware on classic ESP32; ST7796 UI and touchscreen.
-- On-screen ZERO / MUTE / RAW-PERSIST controls; AUTOZERO, score, EARLY / MID / LATE and logging.
-- GPIO22 TX: **ESP32 RMT hardware-generated** 100 µs HIGH + 4,900 µs LOW (**uninterrupted 200 Hz**); 16 pulses averaged per measurement frame without pausing TX; **three ADC tap times: 30 / 60 / 90 µs after GPIO22 falling-edge readback**. This replaces interrupt-sensitive `gpio_set_level()` + `esp_rom_delay_us()` pulse widths.
+- On-screen ZERO / MUTE / RAW-PERSIST controls; **SET** page for live TX pulse width, ADC tap offsets and moving average; AUTOZERO, score, EARLY / MID / LATE and logging.
+- GPIO22 TX: **ESP32 RMT hardware-generated** selectable 25/50/75/100 µs HIGH and complementary LOW (**200 Hz**); 16 pulses averaged per frame without pausing TX; **three programmable ADC tap times t / 2t / 3t, with t selectable from 10 to 60 µs**, anchored to GPIO22 falling-edge readback. Additionally smooth 5 or 10 consecutive frames. This replaces interrupt-sensitive `gpio_set_level()` + `esp_rom_delay_us()` pulse widths.
 - Discrete BJT gate driver (BC847A / BC807 / BC847A + BAT54), MOSFET from the 13NK60 600 V family, and a physical 210 mm coil; gate and drain observed on an oscilloscope.
 - BAV99 receiver-input limiting network with a 15 kΩ resistor from DRAIN is physically assembled and tested.
+
+## Touchscreen live controls (experimental)
+
+Tap **SET** (top-right corner) to open the live tuning page:
+
+- TX pulse duration: **25 / 50 / 75 / 100 µs**, with 5 ms total period (200 Hz). Changing TX width briefly stops/restarts the RMT hardware loop; selecting timing, smoothing or using the display does **not** stop TX.
+- First ADC tap after **GPIO22 LOW**: **10 / 15 / 20 / 25 / 30 / 40 / 50 / 60 µs**. The other taps are automatically **2×** and **3×** that time (for example 10/20/30 µs or 30/60/90 µs).
+- Frame moving average: **5 or 10 frames**. Each individual frame already averages **16 consecutive TX pulses**; 10 frames means 160 underlying pulse samples per tap, with slower response to target movement.
+- Changing acquisition settings clears the previous baseline and smoothing window; the next acquired frame autozeros. Use ZERO to rebaseline with the coil stationary and target away.
+- On the main screen, **LATE** counts ADC conversion requests issued over 3 µs after their nominal target. **MAX** shows maximum observed *request-start* lateness in microseconds. It is not a measurement of the ADC's internal sample-and-hold instant.
+
+**Synchronization limitation:** RMT controls TX edges in hardware but GPIO22 falling-edge detection and the three successive ADC1 oneshot reads are still polled in software. At **10/20/30 µs**, FreeRTOS preemption and ADC conversion duration may cause late readings; the screen and log expose timing diagnostics. The transistor driver/DRAIN turn-off may occur ~2 µs **after** GPIO22 LOW, so the taps are not referenced to the true DRAIN switching edge. Hardware-timed ADC capture remains future work.
+
+The modifications are **not yet compiled/flashed/validated** on the physical CYD; test the new controls first with the TX power supply disconnected and a scope on GPIO22/GATE.
 
 ## Bench measurements (not design estimates)
 
