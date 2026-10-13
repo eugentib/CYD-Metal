@@ -87,7 +87,7 @@ esp_err_t board_cyd35_init(void)
         rmt_new_tx_channel(&rmt_cfg, &s_tx_rmt),
         "board", "RMT TX channel init failed");
 
-    const rmt_copy_encoder_config_t encoder_cfg = {0};
+    const rmt_copy_encoder_config_t encoder_cfg = {};
     ESP_RETURN_ON_ERROR(
         rmt_new_copy_encoder(&encoder_cfg, &s_tx_encoder),
         "board", "RMT TX encoder init failed");
@@ -182,7 +182,9 @@ esp_err_t board_cyd35_tx_frame_start(uint8_t pulses,
 
     const rmt_transmit_config_t tx_cfg = {
         .loop_count = 0,
-        .eot_level = 0,
+        .flags = {
+            .eot_level = 0,
+        },
     };
     return rmt_transmit(s_tx_rmt, s_tx_encoder, s_tx_symbols,
                         (size_t)pulses * sizeof(s_tx_symbols[0]), &tx_cfg);
