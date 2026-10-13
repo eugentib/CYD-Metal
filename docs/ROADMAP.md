@@ -6,7 +6,7 @@
 
 - [x] ESP-IDF project scaffold, classic ESP32 and CYD 3.5 profile
 - [x] ST7796 working UI, touchscreen and screen controls
-- [x] TX pulse output on GPIO22: 100 µs / 200 Hz
+- [x] TX pulse output on GPIO22: 100 µs / 200 Hz RMT hardware loop (continuous mode pending bench verification)
 - [x] Software ADC sampling framework, three taps (30/60/90 µs), 16-pulse averaging
 - [x] ZERO/AUTOZERO, EARLY/MID/LATE, diagnostic score and logs
 - [x] RGB/audio feedback
