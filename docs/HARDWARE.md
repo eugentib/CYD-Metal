@@ -17,7 +17,7 @@ CYD 3.5" / classic ESP32, ST7796 480×320, working touchscreen:
 | BOOT / ZERO | 0 | Do not hold through boot unless intentionally flashing |
 | TFT backlight | 27 | Used by display |
 
-Firmware configuration: ESP-IDF 5.4, software-timed 100 µs TX ON every 5 ms (200 Hz), 16-pulse averages, nominal taps at 40, 80, 130, 200, and 300 µs after TX OFF. Display/touch updates run outside capture.
+Firmware configuration: ESP-IDF 5.4; **RMT hardware-clocked** 100 µs TX HIGH and 4,900 µs LOW, giving a stable 5 ms cycle (200 Hz) within 16-pulse capture bursts. ADC polling targets 40, 80, 130, 200 and 300 µs after GPIO22 falling-edge readback. This replaces the software delay that produced measured 100.45–104.39 µs pulse jitter. Display/touch updates remain outside capture. **The new RMT build has not yet been validated on the physical CYD.**
 
 ## Assembled coil and measurements
 
@@ -75,12 +75,12 @@ The 250 V result is a **measured oscilloscope peak**, not the predicted limit fo
 
 See [discrete gate driver and TX documentation](DISCRETE_BJT_DRIVER.md).
 
-## Receiver input: assembled, but no MCP602 amplifier yet
+## Receiver input: BAV99 assembled, MCP602 in bench testing
 
 The physical input network has been built and tested:
 
 ```text
-DRAIN ── 15 kΩ ── RX_PROTECTED ── (AC coupling and MCP602 to be built)
+DRAIN ── 15 kΩ ── RX_PROTECTED ── AC coupling ── 47 kΩ ── MCP602 IN−
                      |
                  BAV99 limiter
                      |
@@ -91,13 +91,13 @@ The BAV99 arrangement is described in the bench record as a two-diode antiparall
 
 **The BAV99 network is RX-side protection only; it does not protect the MOSFET from DRAIN transients.**
 
-### MCP602 receiver: selected, not yet built
+### MCP602 receiver: bench assembly and measurements
 
 - Dual MCP602, nominal 2.7–5.5 V supply; **3.3 V** selected from filtered CYD rail.
 - Proposed rail filter: CYD 3.3 V → 22 Ω → MCP602 VDD, 22 µF to GND; 100 nF local VDD-to-GND bypass.
 - Passive VREF: 10 kΩ from filtered 3.3 V to VREF; 10 kΩ VREF-to-GND; 10 µF + 100 nF VREF-to-GND. Nominal VREF ≈ 1.65 V.
-- First amplifier intended as AC-coupled **inverting** stage, non-inverting input at VREF. Approximate linear response: `VOUT = VREF - (Rf/Rin) · ΔVRX`.
-- Coupling capacitor, Rin, Rf, feedback compensation and input transient protection **have not been finalized**.
+- First amplifier is being tested as an AC-coupled **inverting** stage, non-inverting input at VREF. Initial measured setup: **Rin = 47 kΩ, Rf = 180 kΩ, Ccoupling = 85 nF** (previously 3.5 nF), with antiparallel feedback diodes to limit TX transients. Approximate small-signal linear response: `VOUT = VREF - (Rf/Rin) · ΔVRX`, but the diode limiter makes the large-signal gain nonlinear.
+- With the earlier 3.5 nF capacitor, output saturation/recovery after TX OFF was observed; feedback diodes improved behavior. Actual metal response is not yet characterized.
 - Second op-amp available for later filtering/gain; if unused, terminate it in a stable valid configuration.
 - Preliminary ADC path: MCP602 OUT → **1 kΩ series** → GPIO35, with **1 nF to GND at the ADC node**. Not yet approved for connection.
 
