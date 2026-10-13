@@ -38,7 +38,9 @@ esp_err_t detector_init(detector_t *detector,
     if (!detector || !config || !io ||
         !io->tx_wait_off || !io->adc_read ||
         config->pulses_per_frame == 0 ||
-        (config->moving_avg_frames != 5 && config->moving_avg_frames != 10) ||
+        (config->moving_avg_frames != 1 &&
+         config->moving_avg_frames != 5 &&
+         config->moving_avg_frames != 10) ||
         config->pulse_width_us == 0 ||
         config->pulse_width_us >= config->pulse_period_us) {
         return ESP_ERR_INVALID_ARG;
@@ -154,8 +156,8 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
     frame->data_valid = true;
 
     /* No RMT stop or pause: display work occurs with TX still active.
-     * Each successful frame averages the accepted pulses (usually 16).
-     * Then smooth 5 or 10 full *frames*.
+     * Each frame averages accepted pulses (usually 16 for each tap).
+     * window=1 disables cross-frame smoothing; 5/10 provide smoothing.
      */
     const uint8_t window = detector->cfg.moving_avg_frames;
     const uint8_t slot = detector->history_next;
@@ -244,7 +246,9 @@ esp_err_t detector_update_settings(detector_t *detector,
     if (!detector || (pulse_width_us != 25 && pulse_width_us != 50 &&
                       pulse_width_us != 75 && pulse_width_us != 100) ||
         first_tap_us < 10 || first_tap_us > 100 ||
-        (moving_avg_frames != 5 && moving_avg_frames != 10)) {
+        (moving_avg_frames != 1 &&
+         moving_avg_frames != 5 &&
+         moving_avg_frames != 10)) {
         return ESP_ERR_INVALID_ARG;
     }
     if (pulse_width_us + (uint32_t)first_tap_us * 3U >=
