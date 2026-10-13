@@ -127,3 +127,7 @@ The touchscreen has a SET page: TX HIGH **25/50/75/100 µs** at a constant 200 H
 
 The sampling clock is software polling of GPIO22 falling edge plus `esp_timer_get_time()` and `adc_oneshot_read()`. LATE now flags sample requests >3 µs late, with MAX reporting the maximum request-start delay, not actual ADC sample instant. The minimum 10 µs tap is experimental and must be checked for misses/jitter on real hardware. The RMT pulse itself remains hardware timed.
 
+
+## Acquisition timing note
+
+The physical ESP32 reported an `adc_oneshot_read()` duration up to 39 µs and failed when software scheduled 3 ADC reads within a single 5 ms TX cycle (`VALID 16/16 0/16 0/16`). The updated software samples only one selected tap per TX pulse and rotates t/2t/3t across 48 continuously generated pulses per 16-reading-per-tap frame. This avoids ADC conversion overlap but does NOT hardware-synchronize the sample-and-hold aperture; request-start jitter filtering remains in place. Actual performance after this fix is unverified on hardware.
