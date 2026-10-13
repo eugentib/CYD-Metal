@@ -26,7 +26,7 @@ typedef struct {
     uint32_t pulse_period_us;
     uint16_t tap_us[DETECTOR_TAP_COUNT];
     uint8_t pulses_per_frame;
-    uint8_t moving_avg_frames;  /* 5 or 10 frames */
+    uint8_t moving_avg_frames;  /* 1=OFF, 5 or 10 frames */
 } detector_config_t;
 
 typedef struct {
