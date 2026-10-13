@@ -38,9 +38,9 @@ esp_err_t ui_cyd35_init(const char *touch_name)
                                              touch_name ? touch_name : "TOUCH"));
 
     ESP_ERROR_CHECK(display_st7796_draw_text(16, 52, 2, C_WHITE, "SCORE"));
-    ESP_ERROR_CHECK(display_st7796_draw_text(16, 122, 1, C_GRAY, "EARLY 30us"));
-    ESP_ERROR_CHECK(display_st7796_draw_text(16, 154, 1, C_GRAY, "MID 60us"));
-    ESP_ERROR_CHECK(display_st7796_draw_text(16, 186, 1, C_GRAY, "LATE 90us"));
+    ESP_ERROR_CHECK(display_st7796_draw_text(16, 122, 1, C_GRAY, "EARLY 30US"));
+    ESP_ERROR_CHECK(display_st7796_draw_text(16, 154, 1, C_GRAY, "MID 60US"));
+    ESP_ERROR_CHECK(display_st7796_draw_text(16, 186, 1, C_GRAY, "LATE 90US"));
 
     ESP_ERROR_CHECK(draw_button(10, 264, 145, 48, C_CYAN, "ZERO"));
     ESP_ERROR_CHECK(draw_button(167, 264, 145, 48, C_YELLOW, "MUTE"));
