@@ -73,6 +73,7 @@ void app_main(void)
     bool touch_was_down = false;
     bool muted = false;
     bool raw_page = false;
+    bool settings_page = false;
     uint32_t frame_no = 0;
 
     while (true) {
@@ -84,6 +85,8 @@ void app_main(void)
         }
 
         bool do_zero = false;
+        bool settings_changed = false;
+        bool page_changed = false;
 
         const bool button_down = board_cyd35_zero_button_pressed();
         if (button_down && !button_was_down) {
@@ -98,7 +101,75 @@ void app_main(void)
             ESP_LOGI(TAG, "TOUCH raw=(%u,%u) screen=(%u,%u)",
                      touch.raw_x, touch.raw_y, touch.x, touch.y);
 
-            if (touch.y >= 255) {
+            /* Dedicated SET/BACK control in the top-right header. */
+            if (touch.y < 40 && touch.x >= 395) {
+                settings_page = !settings_page;
+                page_changed = true;
+            } else if (settings_page) {
+                uint32_t next_width = detector.cfg.pulse_width_us;
+                uint16_t next_first = detector.cfg.tap_us[0];
+                uint8_t next_avg = detector.cfg.moving_avg_frames;
+                static const uint16_t widths[] = {25, 50, 75, 100};
+                static const uint16_t first_taps[] = {
+                    10, 15, 20, 25, 30, 40, 50, 60
+                };
+
+                if (touch.y >= 79 && touch.y < 124 && touch.x >= 8) {
+                    uint16_t x = touch.x - 8;
+                    unsigned idx = x / 117U;
+                    if (idx < 4 && x % 117U < 108) {
+                        next_width = widths[idx];
+                    }
+                } else if (touch.y >= 163 && touch.y < 248 &&
+                           touch.x >= 8) {
+                    unsigned row = touch.y >= 208 ? 1U : 0U;
+                    unsigned local_y = touch.y - (163U + row * 45U);
+                    unsigned local_x = touch.x - 8U;
+                    unsigned col = local_x / 117U;
+                    if (local_y < 40 && col < 4 &&
+                        local_x % 117U < 108U) {
+                        next_first = first_taps[row * 4U + col];
+                    }
+                } else if (touch.y >= 264) {
+                    if (touch.x < 160) {
+                        next_avg = 5;
+                    } else if (touch.x < 320) {
+                        next_avg = 10;
+                    } else {
+                        settings_page = false;
+                        page_changed = true;
+                    }
+                }
+
+                if (next_width != detector.cfg.pulse_width_us ||
+                    next_first != detector.cfg.tap_us[0] ||
+                    next_avg != detector.cfg.moving_avg_frames) {
+                    bool change_tx =
+                        next_width != detector.cfg.pulse_width_us;
+                    ESP_ERROR_CHECK(detector_update_settings(
+                        &detector, next_width, next_first, next_avg));
+
+                    if (change_tx) {
+                        /*
+                         * The hardware loop is briefly stopped ONLY when
+                         * the user selects a different TX width. Keep
+                         * frequency at 200Hz and restore RMT output.
+                         */
+                        ESP_ERROR_CHECK(board_cyd35_tx_stop());
+                        ESP_ERROR_CHECK(board_cyd35_tx_start_continuous(
+                            next_width, detector.cfg.pulse_period_us));
+                    }
+                    settings_changed = true;
+                    ESP_LOGI(TAG,
+                             "CONFIG TX=%" PRIu32 "us taps=%u/%u/%uus"
+                             " avg=%u frames, 16 pulses/frame",
+                             next_width,
+                             detector.cfg.tap_us[0],
+                             detector.cfg.tap_us[1],
+                             detector.cfg.tap_us[2],
+                             next_avg);
+                }
+            } else if (touch.y >= 255) {
                 if (touch.x < 160) {
                     do_zero = true;
                 } else if (touch.x < 320) {
@@ -124,9 +195,11 @@ void app_main(void)
          * RMT TX continues to pulse while the UI is being updated.
          * Refresh every second frame to reduce digital pickup during M0.
          */
-        if ((frame_no & 1U) == 0U || touch.touched || do_zero) {
+        if ((frame_no & 1U) == 0U || touch.touched || do_zero ||
+            settings_changed || page_changed) {
             ESP_ERROR_CHECK(ui_cyd35_update(
-                &frame, muted, raw_page, touch.touched ? &touch : NULL));
+                &frame, muted, raw_page, settings_page, &detector.cfg,
+                touch.touched ? &touch : NULL));
         }
 
         ESP_LOGI(
@@ -134,13 +207,15 @@ void app_main(void)
             "f=%" PRIu32
             " raw=[%4u,%4u,%4u]"
             " d=[%4d,%4d,%4d]"
-            " E=%3u M=%3u L=%3u score=%3u persist=%3u%% late=%u%s",
+            " E=%3u M=%3u L=%3u score=%3u persist=%3u%%"
+            " avg=%u/%u late=%u maxlate=%uus%s",
             frame_no++,
             frame.raw[0], frame.raw[1], frame.raw[2],
             frame.diff[0], frame.diff[1], frame.diff[2],
             frame.early, frame.mid, frame.late,
             frame.score, frame.persistence_pct,
-            frame.late_samples,
+            frame.frames_averaged, detector.cfg.moving_avg_frames,
+            frame.late_samples, frame.max_late_us,
             frame.baseline_valid ? "" : " AUTOZERO");
 
         /*
