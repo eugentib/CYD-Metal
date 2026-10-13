@@ -19,6 +19,7 @@ static rmt_encoder_handle_t s_tx_encoder;
 static rmt_symbol_word_t s_tx_symbol;
 static uint32_t s_tx_period_us;
 static bool s_tx_started;
+static bool s_tx_enabled;
 
 #define AUDIO_LEDC_MODE      LEDC_LOW_SPEED_MODE
 #define AUDIO_LEDC_TIMER     LEDC_TIMER_0
@@ -95,6 +96,7 @@ esp_err_t board_cyd35_init(void)
         "board", "RMT TX encoder init failed");
     ESP_RETURN_ON_ERROR(
         rmt_enable(s_tx_rmt), "board", "RMT TX enable failed");
+    s_tx_enabled = true;
 
     /*
      * RMT drives GPIO22 through the output matrix. Enable pad input as
@@ -167,6 +169,15 @@ esp_err_t board_cyd35_tx_start_continuous(uint32_t width_us,
     if (s_tx_started) {
         return ESP_ERR_INVALID_STATE;
     }
+    /* rmt_disable() is used during live width changes; re-enable before
+     * re-submitting a new infinite-loop transaction. */
+    if (!s_tx_enabled) {
+        esp_err_t enable_err = rmt_enable(s_tx_rmt);
+        if (enable_err != ESP_OK) {
+            return enable_err;
+        }
+        s_tx_enabled = true;
+    }
 
     s_tx_symbol = (rmt_symbol_word_t) {
         .level0 = 1,
@@ -203,12 +214,18 @@ esp_err_t board_cyd35_tx_stop(void)
         return ESP_OK;
     }
 
-    /*
-     * Stops the infinite hardware loop. EOT level is LOW (gate off).
-     * This is intended for fatal acquisition errors or an explicit stop.
-     */
+    /* Avoid intentionally truncating an ongoing HIGH pulse when changing
+     * widths on the touch screen. Wait for LOW (up to 1 ms) first. */
+    int64_t deadline = esp_timer_get_time() + 1000;
+    while (gpio_get_level(BOARD_CYD35_TX_GPIO) != 0) {
+        if (esp_timer_get_time() >= deadline) {
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+
     esp_err_t err = rmt_disable(s_tx_rmt);
     if (err == ESP_OK) {
+        s_tx_enabled = false;
         s_tx_started = false;
         s_tx_period_us = 0;
     }
