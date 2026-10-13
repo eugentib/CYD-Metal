@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "esp_timer.h"
-#include "esp_rom_sys.h"
 
 static uint16_t u16_abs_i16(int16_t value)
 {
@@ -27,8 +26,11 @@ esp_err_t detector_init(detector_t *detector,
                         const detector_io_t *io)
 {
     if (!detector || !config || !io ||
-        !io->tx_set || !io->adc_read ||
-        config->pulses_per_frame == 0) {
+        !io->tx_frame_start || !io->tx_wait_off ||
+        !io->tx_frame_finish || !io->adc_read ||
+        config->pulses_per_frame == 0 ||
+        config->pulse_width_us == 0 ||
+        config->pulse_width_us >= config->pulse_period_us) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -59,14 +61,24 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
 
     uint32_t sums[DETECTOR_TAP_COUNT] = {0};
 
+    /*
+     * RMT clocks the complete burst in hardware: pulse width AND spacing
+     * are stable despite display tasks, FreeRTOS ticks or other ISRs.
+     */
+    esp_err_t err = detector->io.tx_frame_start(
+        detector->io.ctx, detector->cfg.pulses_per_frame,
+        detector->cfg.pulse_width_us, detector->cfg.pulse_period_us);
+    if (err != ESP_OK) {
+        return err;
+    }
+
     for (uint8_t p = 0; p < detector->cfg.pulses_per_frame; ++p) {
-        const int64_t cycle_start = esp_timer_get_time();
-
-        detector->io.tx_set(detector->io.ctx, true);
-        esp_rom_delay_us(detector->cfg.pulse_width_us);
-        detector->io.tx_set(detector->io.ctx, false);
-
-        const int64_t rx_t0 = esp_timer_get_time();
+        int64_t rx_t0 = 0;
+        err = detector->io.tx_wait_off(detector->io.ctx, &rx_t0);
+        if (err != ESP_OK) {
+            (void)detector->io.tx_frame_finish(detector->io.ctx);
+            return err;
+        }
 
         for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
             const uint32_t target_us = detector->cfg.tap_us[i];
@@ -82,9 +94,9 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
             }
 
             int raw = 0;
-            esp_err_t err = detector->io.adc_read(detector->io.ctx, &raw);
+            err = detector->io.adc_read(detector->io.ctx, &raw);
             if (err != ESP_OK) {
-                detector->io.tx_set(detector->io.ctx, false);
+                (void)detector->io.tx_frame_finish(detector->io.ctx);
                 return err;
             }
 
@@ -93,11 +105,12 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
             sums[i] += (uint32_t)raw;
         }
 
-        const int64_t elapsed = esp_timer_get_time() - cycle_start;
-        if (elapsed < detector->cfg.pulse_period_us) {
-            esp_rom_delay_us(
-                (uint32_t)(detector->cfg.pulse_period_us - elapsed));
-        }
+    }
+
+    /* Wait through the LOW tail of the last 5 ms cycle before UI work. */
+    err = detector->io.tx_frame_finish(detector->io.ctx);
+    if (err != ESP_OK) {
+        return err;
     }
 
     for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
