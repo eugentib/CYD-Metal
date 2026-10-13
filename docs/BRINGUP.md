@@ -64,3 +64,7 @@ Before applying TX power, check GPIO22 on a scope: select 25, 50, 75 and 100 µs
 - With **10/20/30 µs** taps, if `ADC TIMING SKIP` appears consistently, first inspect `OK` counts and `ADC` runtime. A conversion lasting longer than the gap between taps cannot be made deterministic merely by filtering. Choose a later first tap until the acquisition mechanism is improved.
 - Settings are committed automatically to **NVS** (namespace `cyd_metal`, one versioned `acq` blob): TX width, first ADC tap, moving-average window. Power-cycle to verify they persist. The stored record is read before RMT TX starts. NVS erase/flash erase resets settings.
 - Flashing the new build and testing this timing/persistence revision are still pending.
+
+## ADC one-sample-per-TX revision
+
+Rigol/CYD debugging found the ADC oneshot call taking as much as **39 µs**, which made back-to-back taps (e.g. 10/20/30 µs) impossible. The firmware now acquires only **one tap after each TX falling edge**, in the sequence t → 2t → 3t over three successive hardware pulses; it repeats the sequence 16 times. Thus each tap has 16 opportunities, spread over **48 TX pulses ≈ 240 ms** per frame. RMT remains running at 200 Hz. Watch `OK` counts; on the previous failing setting, `16/16 0/16 0/16` should be replaced by valid values for all taps if scheduling jitter is sufficiently small. If invalid, inspect `MAX`/serial logs. With AVG 10, expect substantial response latency (~2.4 s rolling history). This change is still uncompiled/unverified on the CYD.
