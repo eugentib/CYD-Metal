@@ -47,7 +47,8 @@ static bool stored_settings_valid(const stored_settings_t *settings)
             settings->tx_width_us == 75 ||
             settings->tx_width_us == 100) &&
            supported_tap(settings->first_tap_us) &&
-           (settings->moving_avg_frames == 5 ||
+           (settings->moving_avg_frames == 1 ||
+            settings->moving_avg_frames == 5 ||
             settings->moving_avg_frames == 10);
 }
 
@@ -229,12 +230,11 @@ void app_main(void)
                     }
                 } else if (touch.y >= 264) {
                     if (touch.x < 160) {
-                        next_avg = 5;
+                        next_avg = 1;  /* AVG OFF */
                     } else if (touch.x < 320) {
-                        next_avg = 10;
+                        next_avg = 5;
                     } else {
-                        settings_page = false;
-                        page_changed = true;
+                        next_avg = 10;
                     }
                 }
 
