@@ -51,9 +51,17 @@ typedef struct {
     uint16_t score;
     uint16_t persistence_pct;
 
-    uint16_t late_samples;         /* acquisition requests >3us late */
-    uint16_t max_late_us;          /* maximum ADC request-start lateness */
-    uint8_t frames_averaged;      /* moving window currently populated */
+    /*
+     * Accepted samples have an ADC request start within +1 us of the
+     * programmed offset. The ADC's internal sample instant is not known.
+     */
+    uint8_t accepted_samples[DETECTOR_TAP_COUNT];
+    uint8_t rejected_samples[DETECTOR_TAP_COUNT];
+    uint16_t late_samples;        /* ADC requests rejected for timing */
+    uint16_t max_late_us;         /* worst request-start lateness */
+    uint16_t max_adc_us;          /* max oneshot call duration */
+    uint8_t frames_averaged;     /* moving window currently populated */
+    bool data_valid;              /* all taps have sufficient valid reads */
     bool baseline_valid;
 } detector_frame_t;
 
