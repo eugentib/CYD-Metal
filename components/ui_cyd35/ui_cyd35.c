@@ -38,9 +38,9 @@ esp_err_t ui_cyd35_init(const char *touch_name)
                                              touch_name ? touch_name : "TOUCH"));
 
     ESP_ERROR_CHECK(display_st7796_draw_text(16, 52, 2, C_WHITE, "SCORE"));
-    ESP_ERROR_CHECK(display_st7796_draw_text(16, 122, 1, C_GRAY, "EARLY"));
-    ESP_ERROR_CHECK(display_st7796_draw_text(16, 154, 1, C_GRAY, "MID"));
-    ESP_ERROR_CHECK(display_st7796_draw_text(16, 186, 1, C_GRAY, "LATE"));
+    ESP_ERROR_CHECK(display_st7796_draw_text(16, 122, 1, C_GRAY, "EARLY 30us"));
+    ESP_ERROR_CHECK(display_st7796_draw_text(16, 154, 1, C_GRAY, "MID 60us"));
+    ESP_ERROR_CHECK(display_st7796_draw_text(16, 186, 1, C_GRAY, "LATE 90us"));
 
     ESP_ERROR_CHECK(draw_button(10, 264, 145, 48, C_CYAN, "ZERO"));
     ESP_ERROR_CHECK(draw_button(167, 264, 145, 48, C_YELLOW, "MUTE"));
@@ -93,9 +93,8 @@ esp_err_t ui_cyd35_update(const detector_frame_t *frame,
     ESP_ERROR_CHECK(display_st7796_fill_rect(12, 213, 456, 38, C_BLACK));
 
     if (raw_page) {
-        snprintf(s, sizeof(s), "RAW %u %u %u %u %u",
-                 frame->raw[0], frame->raw[1], frame->raw[2],
-                 frame->raw[3], frame->raw[4]);
+        snprintf(s, sizeof(s), "RAW 30:%u 60:%u 90:%u",
+                 frame->raw[0], frame->raw[1], frame->raw[2]);
         ESP_ERROR_CHECK(display_st7796_draw_text(16, 218, 1, C_WHITE, s));
     } else {
         snprintf(s, sizeof(s), "PERSIST %u%%  LATE %u",
