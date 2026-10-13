@@ -5,7 +5,7 @@
 ## Bench baseline already established
 
 - CYD ST7796 and touchscreen operate; GPIO22 drives the discrete BJT gate stage.
-- RMT-based TX firmware change: 100 µs HIGH, 4,900 µs LOW (200 Hz) in hardware; 16-pulse burst. **TX width was verified stable on the Rigol.**
+- RMT-based TX firmware: 100 µs HIGH, 4,900 µs LOW (200 Hz) in an **infinite hardware loop**; ADC averages 16 cycles without pausing TX. **TX width was verified stable on the Rigol before switching to infinite-loop mode; verify gap-free continuous operation again.**
 - Air-core 210 mm, 30 turns, 12.4 Ω, estimated ~364 µH.
 - Damping across coil **150 Ω**, replacing earlier 75 Ω.
 - At 23 V TX, oscilloscope DRAIN peaks: ~145 V with older 75 Ω; **~250 V with 150 Ω**.
