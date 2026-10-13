@@ -120,3 +120,10 @@ Common signal ground required. Keep high-current pulse return out of sensitive R
 ## Current observation and open questions
 
 Approaching a metal cabinet within ~1–2 cm produced visible changes in the scope decay curve, including ~150–200 µs after TX OFF. It is **not yet demonstrated** whether the change is a true eddy-current target response, coil detuning or a measurement artifact. The analog RX chain must be measured before claiming sensitivity or depth.
+
+## Adjustable timing software (unverified on bench)
+
+The touchscreen has a SET page: TX HIGH **25/50/75/100 µs** at a constant 200 Hz; ADC taps **t/2t/3t** with first t selected from **10, 15, 20, 25, 30, 40, 50, 60 µs**; moving average of **5 or 10 frames** over the existing 16-pulse-per-frame average. Only TX-width changes interrupt/restart the hardware RMT loop. Changing any acquisition setting resets the baseline and moving history.
+
+The sampling clock is software polling of GPIO22 falling edge plus `esp_timer_get_time()` and `adc_oneshot_read()`. LATE now flags sample requests >3 µs late, with MAX reporting the maximum request-start delay, not actual ADC sample instant. The minimum 10 µs tap is experimental and must be checked for misses/jitter on real hardware. The RMT pulse itself remains hardware timed.
+
