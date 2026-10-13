@@ -218,8 +218,8 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
 void detector_zero_from_frame(detector_t *detector,
                               const detector_frame_t *frame)
 {
-    if (!detector || !frame) {
-        return;
+    if (!detector || !frame || !frame->data_valid) {
+        return; /* Never zero from a rejected/partial capture. */
     }
 
     for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
