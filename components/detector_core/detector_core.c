@@ -91,8 +91,11 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
                 /* M0 intentionally favors timing visibility over CPU efficiency. */
             }
 
-            const uint32_t actual_us =
-                (uint32_t)(esp_timer_get_time() - rx_t0);
+            /* Timestamp as close to the ADC request as possible.
+             * There can still be preemption before/inside adc_read().
+             * The diagnostic is request-start time, NOT true ADC aperture. */
+            const int64_t adc_start = esp_timer_get_time();
+            const uint32_t actual_us = (uint32_t)(adc_start - rx_t0);
             const uint32_t lateness =
                 actual_us > target_us ? actual_us - target_us : 0U;
             if (lateness > frame->max_late_us) {
@@ -107,7 +110,6 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
                 continue;
             }
 
-            const int64_t adc_start = esp_timer_get_time();
             int raw = 0;
             err = detector->io.adc_read(detector->io.ctx, &raw);
             const uint32_t adc_elapsed_us =
