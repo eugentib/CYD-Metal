@@ -15,7 +15,7 @@ detector_config_t detector_default_config(void)
     detector_config_t cfg = {
         .pulse_width_us = 100,
         .pulse_period_us = 5000, /* 200 Hz PRF */
-        .tap_us = {40, 80, 130, 200, 300},
+        .tap_us = {30, 60, 90},
         .pulses_per_frame = 16,
     };
     return cfg;
@@ -137,15 +137,10 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
         frame->diff[i] = (int16_t)d;
     }
 
-    const uint16_t a0 = u16_abs_i16(frame->diff[0]);
-    const uint16_t a1 = u16_abs_i16(frame->diff[1]);
-    const uint16_t a2 = u16_abs_i16(frame->diff[2]);
-    const uint16_t a3 = u16_abs_i16(frame->diff[3]);
-    const uint16_t a4 = u16_abs_i16(frame->diff[4]);
-
-    frame->early = (uint16_t)((a0 + a1) / 2U);
-    frame->mid = a2;
-    frame->late = (uint16_t)((a3 + a4) / 2U);
+    /* Three independent post-TX-OFF measurements: 30 / 60 / 90 us. */
+    frame->early = u16_abs_i16(frame->diff[0]);
+    frame->mid = u16_abs_i16(frame->diff[1]);
+    frame->late = u16_abs_i16(frame->diff[2]);
 
     /*
      * Diagnostic weighting only. It intentionally favors the late response
