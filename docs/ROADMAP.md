@@ -7,7 +7,7 @@
 - [x] ESP-IDF project scaffold, classic ESP32 and CYD 3.5 profile
 - [x] ST7796 working UI, touchscreen and screen controls
 - [x] TX pulse output on GPIO22: 100 µs / 200 Hz
-- [x] Software ADC sampling framework, five nominal taps, 16-pulse averaging
+- [x] Software ADC sampling framework, three taps (30/60/90 µs), 16-pulse averaging
 - [x] ZERO/AUTOZERO, EARLY/MID/LATE, diagnostic score and logs
 - [x] RGB/audio feedback
 - [x] Discrete BJT gate driver assembled and observed with scope
@@ -22,7 +22,7 @@
 
 - [ ] Design and validate MOSFET DRAIN clamp for present and future coil
 - [ ] Complete MCP602 AC-coupled inverting gain, VREF and input protection
-- [ ] Measure RX settling/saturation, noise and target delta at 40–200 µs
+- [ ] Measure RX settling/saturation, noise and target delta at 30–90 µs
 - [ ] Validate ADC protection, including startup/shutdown transients
 - [ ] Compare nominal ADC sample times to actual receiver response
 - [ ] Replace software oneshot sampling with improved hardware timing / ADC continuous-DMA if required
