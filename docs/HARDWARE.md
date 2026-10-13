@@ -17,7 +17,7 @@ CYD 3.5" / classic ESP32, ST7796 480×320, working touchscreen:
 | BOOT / ZERO | 0 | Do not hold through boot unless intentionally flashing |
 | TFT backlight | 27 | Used by display |
 
-Firmware configuration: ESP-IDF 5.4; **RMT hardware-clocked** 100 µs TX HIGH and 4,900 µs LOW, giving a stable 5 ms cycle (200 Hz) within 16-pulse capture bursts. ADC polling targets 40, 80, 130, 200 and 300 µs after GPIO22 falling-edge readback. This replaces the software delay that produced measured 100.45–104.39 µs pulse jitter. Display/touch updates remain outside capture. **The new RMT build has not yet been validated on the physical CYD.**
+Firmware configuration: ESP-IDF 5.4; **RMT hardware-clocked** 100 µs TX HIGH and 4,900 µs LOW, giving a stable 5 ms cycle (200 Hz) within 16-pulse capture bursts. ADC polling now targets **30, 60 and 90 µs** after GPIO22 falling-edge readback. This replaces the software delay that produced measured 100.45–104.39 µs pulse jitter. Display/touch updates remain outside capture. **The user verified stable TX pulse timing with a Rigol oscilloscope.** The updated 30/60/90 µs ADC windows still await validation on hardware.
 
 ## Assembled coil and measurements
 
