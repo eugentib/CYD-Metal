@@ -68,3 +68,7 @@ Before applying TX power, check GPIO22 on a scope: select 25, 50, 75 and 100 µs
 ## ADC one-sample-per-TX revision
 
 Rigol/CYD debugging found the ADC oneshot call taking as much as **39 µs**, which made back-to-back taps (e.g. 10/20/30 µs) impossible. The firmware now acquires only **one tap after each TX falling edge**, in the sequence t → 2t → 3t over three successive hardware pulses; it repeats the sequence 16 times. Thus each tap has 16 opportunities, spread over **48 TX pulses ≈ 240 ms** per frame. RMT remains running at 200 Hz. Watch `OK` counts; on the previous failing setting, `16/16 0/16 0/16` should be replaced by valid values for all taps if scheduling jitter is sufficiently small. If invalid, inspect `MAX`/serial logs. With AVG 10, expect substantial response latency (~2.4 s rolling history). This change is still uncompiled/unverified on the CYD.
+
+## AVG OFF test
+
+SET page offers **AVG OFF / AVG 5 / AVG 10** along the bottom; use the top-right **BACK** control to return. AVG OFF is internally a one-frame window: the current 16 accepted samples per tap are still averaged, but frames are not smoothed together. It should respond faster (~240 ms per frame at 200 Hz) at the cost of more visible noise. The mode is stored in the existing NVS settings record and restored on reboot. Change modes with no metal near the coil because changing settings resets ZERO.
