@@ -14,10 +14,25 @@
 
 static const char *TAG = "CYD-Metal";
 
-static void detector_tx_adapter(void *ctx, bool high)
+static esp_err_t detector_tx_frame_start_adapter(void *ctx,
+                                                 uint8_t pulses,
+                                                 uint32_t width_us,
+                                                 uint32_t period_us)
 {
     (void)ctx;
-    board_cyd35_tx_set(high);
+    return board_cyd35_tx_frame_start(pulses, width_us, period_us);
+}
+
+static esp_err_t detector_tx_wait_off_adapter(void *ctx, int64_t *tx_off_us)
+{
+    (void)ctx;
+    return board_cyd35_tx_wait_off(tx_off_us);
+}
+
+static esp_err_t detector_tx_frame_finish_adapter(void *ctx)
+{
+    (void)ctx;
+    return board_cyd35_tx_frame_finish();
 }
 
 static esp_err_t detector_adc_adapter(void *ctx, int *raw)
@@ -42,7 +57,9 @@ void app_main(void)
 
     detector_config_t cfg = detector_default_config();
     detector_io_t io = {
-        .tx_set = detector_tx_adapter,
+        .tx_frame_start = detector_tx_frame_start_adapter,
+        .tx_wait_off = detector_tx_wait_off_adapter,
+        .tx_frame_finish = detector_tx_frame_finish_adapter,
         .adc_read = detector_adc_adapter,
         .ctx = NULL,
     };
@@ -50,7 +67,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(detector_init(&detector, &cfg, &io));
 
-    ESP_LOGI(TAG, "CYD-Metal M0 starting");
+    ESP_LOGI(TAG, "CYD-Metal M0 starting (RMT hardware-timed TX)");
     ESP_LOGI(TAG, "TX GPIO=%d, ADC GPIO=%d / ADC1_CH7",
              BOARD_CYD35_TX_GPIO, BOARD_CYD35_ADC_GPIO);
     ESP_LOGI(TAG, "BOOT or on-screen ZERO captures the baseline");
