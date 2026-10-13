@@ -8,7 +8,7 @@ Experimental **pulse-induction (PI) metal detector** using a classic ESP32 and t
 
 - ESP-IDF 5.4 firmware on classic ESP32; ST7796 UI and touchscreen.
 - On-screen ZERO / MUTE / RAW-PERSIST controls; AUTOZERO, score, EARLY / MID / LATE and logging.
-- GPIO22 TX: 100 µs pulse every 5 ms (200 Hz); 16 pulses averaged; five ADC tap times: 40 / 80 / 130 / 200 / 300 µs after TX OFF.
+- GPIO22 TX: **ESP32 RMT hardware-generated** 100 µs HIGH + 4,900 µs LOW (200 Hz during each 16-pulse burst); 16 pulses averaged; five ADC tap times: 40 / 80 / 130 / 200 / 300 µs after a GPIO22 falling-edge readback. This replaces interrupt-sensitive `gpio_set_level()` + `esp_rom_delay_us()` pulse widths.
 - Discrete BJT gate driver (BC847A / BC807 / BC847A + BAT54), MOSFET from the 13NK60 600 V family, and a physical 210 mm coil; gate and drain observed on an oscilloscope.
 - BAV99 receiver-input limiting network with a 15 kΩ resistor from DRAIN is physically assembled and tested.
 
@@ -31,11 +31,19 @@ The TX driver is currently supplied from the TX rail (not a dedicated 12 V suppl
 
 ## Work in progress: MCP602 analog receiver
 
-The already-tested **DRAIN → 15 kΩ → BAV99-limited RX node** will be AC-coupled into a **3.3 V MCP602** inverting amplifier, with a passive and decoupled **1.65 V reference**. Gain, coupling capacitor, input clamps and recovery behavior must still be determined experimentally. A provisional output network is **1 kΩ series to GPIO35, 1 nF to ground**, subject to validation and input safety checks.
+The already-tested **DRAIN → 15 kΩ → BAV99-limited RX node** is being AC-coupled into a **3.3 V MCP602** inverting amplifier, with a passive and decoupled **1.65 V reference**. In bench trials the RX has used 47 kΩ input resistance, 180 kΩ feedback and antiparallel feedback diodes; the coupling capacitor was changed from 3.5 nF to **85 nF**. The best gain/recovery settings remain experimental. A provisional output network is **1 kΩ series to GPIO35, 1 nF to ground**, subject to validation and input safety checks.
 
 **Do not connect GPIO35 yet.** Test the RX output with an oscilloscope during switching, power-up, power-down and target approach; ensure ADC-safe voltage for all operating conditions.
 
 See [hardware measurements and architecture](docs/HARDWARE.md), [TX BJT driver](docs/DISCRETE_BJT_DRIVER.md), [MCP602 receiver plan](docs/RX_MCP602.md), [bring-up procedure](docs/BRINGUP.md) and [roadmap](docs/ROADMAP.md).
+
+## RMT timing change (13 October 2026)
+
+Oscilloscope measurements with software GPIO pulses showed widths varying between **100.45 µs and 104.39 µs**; the resulting TX-current variability injected noise into RX. The code now uses ESP-IDF 5.4 `esp_driver_rmt` to transmit the full 16-pulse burst with **1 MHz symbol resolution**, so **both the 100 µs HIGH and 4,900 µs LOW durations are hardware-clocked**.
+
+The capture task enables GPIO22 **input readback alongside the RMT output**, waits for its actual rising/falling transitions, and anchors ADC taps to the observed TX-OFF edge. The task can still be preempted during ADC sampling: the existing `late_samples` diagnostic is retained. RMT edge timing should be checked on a scope before trusting the new firmware. This version has **not yet been compiled or validated on the user's physical board**.
+
+**Bench verification:** after flashing, scope GPIO22/GATE at 20 µs/div for pulse width (expect about 100 µs), then at 1 ms/div for 5 ms interval. Observe the analog RX again at 40–200 µs after TX OFF. If capture fails with an ESP_ERR_TIMEOUT, first verify GPIO22 readback during RMT output and check that the TX signal is electrically high for the entire pulse.
 
 ## CYD pin profile
 
