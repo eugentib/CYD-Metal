@@ -5,7 +5,7 @@
 ## Bench baseline already established
 
 - CYD ST7796 and touchscreen operate; GPIO22 drives the discrete BJT gate stage.
-- RMT-based TX firmware change: 100 µs HIGH, 4,900 µs LOW (200 Hz) in hardware; 16-pulse burst. **Hardware scope verification is still pending.**
+- RMT-based TX firmware change: 100 µs HIGH, 4,900 µs LOW (200 Hz) in hardware; 16-pulse burst. **TX width was verified stable on the Rigol.**
 - Air-core 210 mm, 30 turns, 12.4 Ω, estimated ~364 µH.
 - Damping across coil **150 Ω**, replacing earlier 75 Ω.
 - At 23 V TX, oscilloscope DRAIN peaks: ~145 V with older 75 Ω; **~250 V with 150 Ω**.
@@ -34,7 +34,7 @@ Connect **10 kΩ / 10 kΩ** divider between filtered 3.3 V and GND with **10 µF
 
 Determine C_COUPLE, R_IN, R_F, input clamps, feedback compensation and bias/return paths from oscilloscope measurements of the BAV99-protected node. Those component values are **not yet finalized**. A limiter around a ~23 V DC node does not make it directly safe for a 3.3 V op-amp.
 
-Measure MCP602 output on the scope while pulsing TX. Verify short recovery from TX OFF, especially at the target sample times of **40, 80, 130 and 200 µs**. Also observe the 300 µs tap.
+Measure MCP602 output on the scope while pulsing TX. Verify short recovery from TX OFF, especially at the three new target sample times of **30, 60 and 90 µs**.
 
 ## 4. Validate ADC safety before wiring
 
@@ -44,7 +44,7 @@ Candidate output filter: **1 kΩ** series from MCP602 OUT to ADC node, **1 nF** 
 
 - Log no-target baseline, then a large steel/cast iron target at controlled distances.
 - Compare early, middle and late decay with the scope; note possible coil detuning or probe artifacts.
-- Once the analog output is safe, collect firmware raw taps and deltas, EARLY/MID/LATE, score, persistence and late-sample counts.
+- Once the analog output is safe, collect firmware raw taps and deltas, EARLY(30 µs)/MID(60 µs)/LATE(90 µs), score, persistence and late-sample counts.
 - The existing M0 score is **diagnostic only**, not calibrated metal identification or detection depth.
 
 ## Parallel open issue: drain clamp
