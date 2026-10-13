@@ -21,7 +21,16 @@ extern "C" {
 
 esp_err_t board_cyd35_init(void);
 
-void board_cyd35_tx_set(bool high);
+/*
+ * RMT generates a hardware-timed burst: HIGH for width_us, LOW until
+ * period_us, repeated pulses times. GPIO22 is read back to synchronize
+ * ADC taps with the real TX falling edge, not the rmt_transmit() call.
+ */
+esp_err_t board_cyd35_tx_frame_start(uint8_t pulses,
+                                     uint32_t width_us,
+                                     uint32_t period_us);
+esp_err_t board_cyd35_tx_wait_off(int64_t *tx_off_us);
+esp_err_t board_cyd35_tx_frame_finish(void);
 esp_err_t board_cyd35_adc_read(int *raw);
 
 bool board_cyd35_zero_button_pressed(void);
