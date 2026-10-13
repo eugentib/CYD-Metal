@@ -8,7 +8,7 @@ Experimental **pulse-induction (PI) metal detector** using a classic ESP32 and t
 
 - ESP-IDF 5.4 firmware on classic ESP32; ST7796 UI and touchscreen.
 - On-screen ZERO / MUTE / RAW-PERSIST controls; AUTOZERO, score, EARLY / MID / LATE and logging.
-- GPIO22 TX: **ESP32 RMT hardware-generated** 100 µs HIGH + 4,900 µs LOW (200 Hz during each 16-pulse burst); 16 pulses averaged; five ADC tap times: 40 / 80 / 130 / 200 / 300 µs after a GPIO22 falling-edge readback. This replaces interrupt-sensitive `gpio_set_level()` + `esp_rom_delay_us()` pulse widths.
+- GPIO22 TX: **ESP32 RMT hardware-generated** 100 µs HIGH + 4,900 µs LOW (200 Hz during each 16-pulse burst); 16 pulses averaged; **three ADC tap times: 30 / 60 / 90 µs after GPIO22 falling-edge readback**. This replaces interrupt-sensitive `gpio_set_level()` + `esp_rom_delay_us()` pulse widths.
 - Discrete BJT gate driver (BC847A / BC807 / BC847A + BAT54), MOSFET from the 13NK60 600 V family, and a physical 210 mm coil; gate and drain observed on an oscilloscope.
 - BAV99 receiver-input limiting network with a 15 kΩ resistor from DRAIN is physically assembled and tested.
 
@@ -41,9 +41,9 @@ See [hardware measurements and architecture](docs/HARDWARE.md), [TX BJT driver](
 
 Oscilloscope measurements with software GPIO pulses showed widths varying between **100.45 µs and 104.39 µs**; the resulting TX-current variability injected noise into RX. The code now uses ESP-IDF 5.4 `esp_driver_rmt` to transmit the full 16-pulse burst with **1 MHz symbol resolution**, so **both the 100 µs HIGH and 4,900 µs LOW durations are hardware-clocked**.
 
-The capture task enables GPIO22 **input readback alongside the RMT output**, waits for its actual rising/falling transitions, and anchors ADC taps to the observed TX-OFF edge. The task can still be preempted during ADC sampling: the existing `late_samples` diagnostic is retained. RMT edge timing should be checked on a scope before trusting the new firmware. This version has **not yet been compiled or validated on the user's physical board**.
+The capture task enables GPIO22 **input readback alongside the RMT output**, waits for its actual rising/falling transitions, and anchors ADC taps to the observed TX-OFF edge. The task can still be preempted during ADC sampling: the existing `late_samples` diagnostic is retained. **The user confirmed stable RMT TX pulse widths with a scope.** The ADC windows were subsequently revised to 30/60/90 µs; they have not yet been tested on the physical board.
 
-**Bench verification:** after flashing, scope GPIO22/GATE at 20 µs/div for pulse width (expect about 100 µs), then at 1 ms/div for 5 ms interval. Observe the analog RX again at 40–200 µs after TX OFF. If capture fails with an ESP_ERR_TIMEOUT, first verify GPIO22 readback during RMT output and check that the TX signal is electrically high for the entire pulse.
+**Bench verification:** after flashing, scope GPIO22/GATE at 20 µs/div for pulse width (expect about 100 µs), then at 1 ms/div for 5 ms interval. Observe the analog RX again at 30, 60 and 90 µs after TX OFF. If capture fails with an ESP_ERR_TIMEOUT, first verify GPIO22 readback during RMT output and check that the TX signal is electrically high for the entire pulse.
 
 ## CYD pin profile
 
