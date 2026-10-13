@@ -17,6 +17,7 @@ detector_config_t detector_default_config(void)
         .pulse_period_us = 5000, /* 200 Hz PRF */
         .tap_us = {30, 60, 90},
         .pulses_per_frame = 16,
+        .moving_avg_frames = 10,
     };
     return cfg;
 }
@@ -28,6 +29,7 @@ esp_err_t detector_init(detector_t *detector,
     if (!detector || !config || !io ||
         !io->tx_wait_off || !io->adc_read ||
         config->pulses_per_frame == 0 ||
+        (config->moving_avg_frames != 5 && config->moving_avg_frames != 10) ||
         config->pulse_width_us == 0 ||
         config->pulse_width_us >= config->pulse_period_us) {
         return ESP_ERR_INVALID_ARG;
@@ -81,8 +83,15 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
 
             const uint32_t actual_us =
                 (uint32_t)(esp_timer_get_time() - rx_t0);
-            if (actual_us > target_us + 15U) {
-                frame->late_samples++;
+            if (actual_us > target_us) {
+                uint32_t lateness = actual_us - target_us;
+                if (lateness > frame->max_late_us) {
+                    frame->max_late_us = (uint16_t)(lateness > UINT16_MAX
+                                                       ? UINT16_MAX : lateness);
+                }
+                if (lateness > 3U) {
+                    frame->late_samples++;
+                }
             }
 
             int raw = 0;
@@ -97,10 +106,32 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
         }
     }
 
-    /* No RMT stop or pause: display work occurs with TX still active. */
+    /* No RMT stop or pause: display work occurs with TX still active.
+     * Every frame already averages 16 pulses. Average the last 5 or 10
+     * *frames* as well, without attempting ADC bursts inside a 10us tap.
+     */
+    const uint8_t window = detector->cfg.moving_avg_frames;
+    const uint8_t slot = detector->history_next;
     for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
-        frame->raw[i] =
-            (uint16_t)(sums[i] / detector->cfg.pulses_per_frame);
+        uint16_t sample = (uint16_t)(
+            (sums[i] + detector->cfg.pulses_per_frame / 2U) /
+            detector->cfg.pulses_per_frame);
+        frame->instant_raw[i] = sample;
+        if (detector->history_count == window) {
+            detector->history_sum[i] -= detector->history[i][slot];
+        }
+        detector->history[i][slot] = sample;
+        detector->history_sum[i] += sample;
+    }
+    if (detector->history_count < window) {
+        detector->history_count++;
+    }
+    detector->history_next = (uint8_t)((slot + 1) % window);
+    frame->frames_averaged = detector->history_count;
+    for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
+        frame->raw[i] = (uint16_t)(
+            (detector->history_sum[i] + detector->history_count / 2U) /
+            detector->history_count);
     }
 
     if (!detector->baseline_valid) {
@@ -121,7 +152,7 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
         frame->diff[i] = (int16_t)d;
     }
 
-    /* Three independent post-TX-OFF measurements: 30 / 60 / 90 us. */
+    /* Three independent post-TX-OFF measurements: t / 2t / 3t. */
     frame->early = u16_abs_i16(frame->diff[0]);
     frame->mid = u16_abs_i16(frame->diff[1]);
     frame->late = u16_abs_i16(frame->diff[2]);
@@ -157,4 +188,36 @@ void detector_zero_from_frame(detector_t *detector,
         detector->baseline[i] = frame->raw[i];
     }
     detector->baseline_valid = true;
+}
+
+esp_err_t detector_update_settings(detector_t *detector,
+                                   uint32_t pulse_width_us,
+                                   uint16_t first_tap_us,
+                                   uint8_t moving_avg_frames)
+{
+    if (!detector || (pulse_width_us != 25 && pulse_width_us != 50 &&
+                      pulse_width_us != 75 && pulse_width_us != 100) ||
+        first_tap_us < 10 || first_tap_us > 100 ||
+        (moving_avg_frames != 5 && moving_avg_frames != 10)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (pulse_width_us + (uint32_t)first_tap_us * 3U >=
+        detector->cfg.pulse_period_us) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    detector->cfg.pulse_width_us = pulse_width_us;
+    for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
+        detector->cfg.tap_us[i] = (uint16_t)(first_tap_us * (i + 1));
+    }
+    detector->cfg.moving_avg_frames = moving_avg_frames;
+
+    /* Samples captured at different times/pulse widths are not comparable.
+     * Reset both smoothed history and baseline on a setting change. */
+    memset(detector->history, 0, sizeof(detector->history));
+    memset(detector->history_sum, 0, sizeof(detector->history_sum));
+    detector->history_count = 0;
+    detector->history_next = 0;
+    detector->baseline_valid = false;
+    return ESP_OK;
 }
