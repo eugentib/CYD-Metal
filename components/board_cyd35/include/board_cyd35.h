@@ -22,15 +22,16 @@ extern "C" {
 esp_err_t board_cyd35_init(void);
 
 /*
- * RMT generates a hardware-timed burst: HIGH for width_us, LOW until
- * period_us, repeated pulses times. GPIO22 is read back to synchronize
- * ADC taps with the real TX falling edge, not the rmt_transmit() call.
+ * RMT generates uninterrupted 100us/5ms-style pulses until tx_stop().
+ * Start ONCE after the display and detector are initialized. The ADC can
+ * sample any 16 cycles without changing the hardware TX waveform.
  */
-esp_err_t board_cyd35_tx_frame_start(uint8_t pulses,
-                                     uint32_t width_us,
-                                     uint32_t period_us);
+esp_err_t board_cyd35_tx_start_continuous(uint32_t width_us,
+                                         uint32_t period_us);
+esp_err_t board_cyd35_tx_stop(void);
+
+/* Poll the actual GPIO22 rising and falling edges to reference ADC taps. */
 esp_err_t board_cyd35_tx_wait_off(int64_t *tx_off_us);
-esp_err_t board_cyd35_tx_frame_finish(void);
 esp_err_t board_cyd35_adc_read(int *raw);
 
 bool board_cyd35_zero_button_pressed(void);
