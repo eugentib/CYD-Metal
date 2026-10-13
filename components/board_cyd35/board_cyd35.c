@@ -9,14 +9,16 @@
 
 static adc_oneshot_unit_handle_t s_adc1;
 
-/* One RMT symbol (1 MHz clock) describes an entire 5 ms PI cycle.
- * Static storage stays valid until the RMT transfer has completed. */
+/*
+ * A single RMT symbol is one complete 5ms PI cycle. It loops in hardware
+ * indefinitely, including while the CPU refreshes the display.
+ */
 #define TX_RMT_RESOLUTION_HZ 1000000UL
-#define TX_MAX_PULSES UINT8_MAX
 static rmt_channel_handle_t s_tx_rmt;
 static rmt_encoder_handle_t s_tx_encoder;
-static rmt_symbol_word_t s_tx_symbols[TX_MAX_PULSES];
+static rmt_symbol_word_t s_tx_symbol;
 static uint32_t s_tx_period_us;
+static bool s_tx_started;
 
 #define AUDIO_LEDC_MODE      LEDC_LOW_SPEED_MODE
 #define AUDIO_LEDC_TIMER     LEDC_TIMER_0
@@ -154,54 +156,75 @@ esp_err_t board_cyd35_init(void)
     return ESP_OK;
 }
 
-esp_err_t board_cyd35_tx_frame_start(uint8_t pulses,
-                                     uint32_t width_us,
-                                     uint32_t period_us)
+esp_err_t board_cyd35_tx_start_continuous(uint32_t width_us,
+                                         uint32_t period_us)
 {
-    if (!s_tx_rmt || !s_tx_encoder || pulses == 0 ||
+    if (!s_tx_rmt || !s_tx_encoder ||
         width_us == 0 || width_us >= period_us ||
         width_us > 32767U || period_us - width_us > 32767U) {
         return ESP_ERR_INVALID_ARG;
     }
-
-    /* Never overwrite RMT's payload before the previous burst ends. */
-    esp_err_t err = rmt_tx_wait_all_done(s_tx_rmt, 100);
-    if (err != ESP_OK) {
-        return err;
+    if (s_tx_started) {
+        return ESP_ERR_INVALID_STATE;
     }
 
-    for (uint16_t i = 0; i < pulses; ++i) {
-        s_tx_symbols[i] = (rmt_symbol_word_t) {
-            .level0 = 1,
-            .duration0 = (uint16_t)width_us,
-            .level1 = 0,
-            .duration1 = (uint16_t)(period_us - width_us),
-        };
-    }
+    s_tx_symbol = (rmt_symbol_word_t) {
+        .level0 = 1,
+        .duration0 = (uint16_t)width_us,
+        .level1 = 0,
+        .duration1 = (uint16_t)(period_us - width_us),
+    };
     s_tx_period_us = period_us;
 
+    /*
+     * ESP-IDF hardware loop. This transaction does not finish on its own:
+     * do NOT call rmt_tx_wait_all_done() while it is running.
+     * The source symbol has static storage and fits in RMT memory.
+     */
     const rmt_transmit_config_t tx_cfg = {
-        .loop_count = 0,
+        .loop_count = -1,
         .flags = {
             .eot_level = 0,
         },
     };
-    return rmt_transmit(s_tx_rmt, s_tx_encoder, s_tx_symbols,
-                        (size_t)pulses * sizeof(s_tx_symbols[0]), &tx_cfg);
+    esp_err_t err = rmt_transmit(s_tx_rmt, s_tx_encoder, &s_tx_symbol,
+                                 sizeof(s_tx_symbol), &tx_cfg);
+    if (err != ESP_OK) {
+        s_tx_period_us = 0;
+        return err;
+    }
+    s_tx_started = true;
+    return ESP_OK;
+}
+
+esp_err_t board_cyd35_tx_stop(void)
+{
+    if (!s_tx_started) {
+        return ESP_OK;
+    }
+
+    /*
+     * Stops the infinite hardware loop. EOT level is LOW (gate off).
+     * This is intended for fatal acquisition errors or an explicit stop.
+     */
+    esp_err_t err = rmt_disable(s_tx_rmt);
+    if (err == ESP_OK) {
+        s_tx_started = false;
+        s_tx_period_us = 0;
+    }
+    return err;
 }
 
 esp_err_t board_cyd35_tx_wait_off(int64_t *tx_off_us)
 {
-    if (!tx_off_us || !s_tx_period_us) {
-        return ESP_ERR_INVALID_ARG;
+    if (!tx_off_us || !s_tx_started || !s_tx_period_us) {
+        return ESP_ERR_INVALID_STATE;
     }
 
     /*
-     * The TX transaction starts asynchronously. Observe GPIO22 going
-     * HIGH and then LOW. Sampling is anchored to the actual falling
-     * edge, not to software's request to start a pulse.
-     * A missed edge yields a timeout rather than silently sampling
-     * the wrong part of the period.
+     * RMT runs continuously in the background. Observe GPIO22 HIGH->LOW
+     * to place each ADC sampling window after an actual TX-OFF edge.
+     * The task may miss cycles while drawing; it never pauses TX.
      */
     int64_t deadline = esp_timer_get_time() + s_tx_period_us + 2000;
     while (gpio_get_level(BOARD_CYD35_TX_GPIO) == 0) {
@@ -219,15 +242,6 @@ esp_err_t board_cyd35_tx_wait_off(int64_t *tx_off_us)
 
     *tx_off_us = esp_timer_get_time();
     return ESP_OK;
-}
-
-esp_err_t board_cyd35_tx_frame_finish(void)
-{
-    if (!s_tx_rmt) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    /* The final symbol includes the remaining LOW portion of the cycle. */
-    return rmt_tx_wait_all_done(s_tx_rmt, 100);
 }
 
 esp_err_t board_cyd35_adc_read(int *raw)
