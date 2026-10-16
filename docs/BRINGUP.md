@@ -72,3 +72,7 @@ Rigol/CYD debugging found the ADC oneshot call taking as much as **39 µs**, whi
 ## AVG OFF test
 
 SET page offers **AVG OFF / AVG 5 / AVG 10** along the bottom; use the top-right **BACK** control to return. AVG OFF is internally a one-frame window: the current 16 accepted samples per tap are still averaged, but frames are not smoothed together. It should respond faster (~240 ms per frame at 200 Hz) at the cost of more visible noise. The mode is stored in the existing NVS settings record and restored on reboot. Change modes with no metal near the coil because changing settings resets ZERO.
+
+## Adaptive 1/TX versus 3/TX acquisition
+
+The CYD automatically uses **1 ADC tap per TX pulse** when the first tap is 10–40 µs; a complete 16-reading-per-tap frame then takes 48 × 5 ms ≈ 240 ms. When the first tap is **50 or 60 µs**, it automatically attempts **3 ADC taps per TX pulse** (50/100/150 or 60/120/180 µs), reducing a frame to 16 × 5 ms ≈ 80 ms and obtaining all three tap readings from the same physical TX pulse. This is conditional on ADC call durations being shorter than the between-tap gap; on the real board the observed max was ~39 µs. In SET and in serial logs, the mode is shown as `1/TX` or `3/TX`. Keep the +1 µs acceptance gate: verify `OK 16/16/16` and `MAX` for t=50 and 60 µs. If t=50 shows many rejections, t=60 has more margin. The 40-µs setting intentionally uses the conservative 1/TX mode. This change is not yet hardware-validated.
