@@ -114,6 +114,11 @@ static esp_err_t draw_settings(const detector_config_t *cfg)
             starts[i], cfg->tap_us[0] == starts[i]));
     }
 
+    ESP_ERROR_CHECK(display_st7796_draw_text(
+        12, 252, 1, C_GRAY,
+        cfg->tap_us[0] >= 50U ?
+        "ADC MODE: 3 SAMPLES / TX" : "ADC MODE: 1 SAMPLE / TX"));
+
     ESP_ERROR_CHECK(draw_button(
         10, 264, 145, 48, cfg->moving_avg_frames == 1 ? C_GREEN : C_BLUE,
         "AVG OFF"));
