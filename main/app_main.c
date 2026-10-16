@@ -154,6 +154,9 @@ void app_main(void)
     ESP_LOGI(TAG, "BOOT or on-screen ZERO captures the baseline");
     ESP_LOGI(TAG, "ADC taps after TX OFF: %u / %u / %u us",
              cfg.tap_us[0], cfg.tap_us[1], cfg.tap_us[2]);
+    ESP_LOGI(TAG, "ADC capture mode: %s",
+             cfg.tap_us[0] >= 50U ? "3 taps / TX pulse" :
+                                     "1 tap / TX pulse");
     ESP_LOGI(TAG, "pulse=%" PRIu32 " us, PRF=%" PRIu32 " Hz, averages=%u",
              cfg.pulse_width_us,
              1000000UL / cfg.pulse_period_us,
@@ -314,7 +317,7 @@ void app_main(void)
             " raw=[%4u,%4u,%4u]"
             " d=[%4d,%4d,%4d]"
             " E=%3u M=%3u L=%3u score=%3u persist=%3u%%"
-            " avg=%u/%u ok=[%u,%u,%u]/%u"
+            " mode=%s avg=%u/%u ok=[%u,%u,%u]/%u"
             " reject=[%u,%u,%u] late=%u maxlate=%uus"
             " adcmax=%uus%s%s",
             frame_no++,
@@ -322,6 +325,7 @@ void app_main(void)
             frame.diff[0], frame.diff[1], frame.diff[2],
             frame.early, frame.mid, frame.late,
             frame.score, frame.persistence_pct,
+            detector.cfg.tap_us[0] >= 50U ? "3/TX" : "1/TX",
             frame.frames_averaged, detector.cfg.moving_avg_frames,
             frame.accepted_samples[0], frame.accepted_samples[1],
             frame.accepted_samples[2], detector.cfg.pulses_per_frame,
