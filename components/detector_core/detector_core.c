@@ -76,23 +76,42 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
     uint8_t counts[DETECTOR_TAP_COUNT] = {0};
 
     /*
-     * adc_oneshot_read() may take ~39 us on the physical ESP32.
-     * Three back-to-back reads cannot hit 10/20/30 us (or 30/60/90).
+     * RX capture strategy follows the available time between taps:
      *
-     * Use ONE ADC conversion per TX pulse, round-robin across the taps.
-     * Three physical TX pulses yield one set of t/2t/3t samples:
-     *     TX #1 -> t; TX #2 -> 2t; TX #3 -> 3t.
-     * Repeat 16 times: 48 TX pulses / frame, 16 readings per tap.
-     * The RMT 200Hz pulse stream NEVER pauses during this acquisition.
+     * first tap < 50 us: one ADC read per TX pulse, round-robin across
+     * the three taps. The 39us worst observed adc_oneshot_read() runtime
+     * cannot fit reliably between earlier windows.
+     *
+     * first tap >= 50 us: three ADC reads after ONE TX falling edge,
+     * at t, 2t, 3t. Observed worst-case ADC call duration was ~39us;
+     * a 50us gap leaves ~11us for return/dispatch overhead. If any
+     * conversion starts later than target+1us, it is discarded exactly
+     * as in interleaved mode (no unsafe assumption about timing).
+     *
+     * TX continues indefinitely in RMT in either mode. Each frame
+     * averages 16 accepted readings for each tap, using 16 or 48
+     * consecutive RMT pulses depending on capture mode.
      */
+    const bool capture_three_per_pulse = detector->cfg.tap_us[0] >= 50U;
+
     for (uint8_t repetition = 0;
          repetition < detector->cfg.pulses_per_frame; ++repetition) {
-        for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
-            int64_t rx_t0 = 0;
+        int64_t shared_rx_t0 = 0;
+        if (capture_three_per_pulse) {
             esp_err_t err = detector->io.tx_wait_off(
-                detector->io.ctx, &rx_t0);
+                detector->io.ctx, &shared_rx_t0);
             if (err != ESP_OK) {
                 return err;
+            }
+        }
+        for (int i = 0; i < DETECTOR_TAP_COUNT; ++i) {
+            int64_t rx_t0 = shared_rx_t0;
+            if (!capture_three_per_pulse) {
+                esp_err_t err = detector->io.tx_wait_off(
+                    detector->io.ctx, &rx_t0);
+                if (err != ESP_OK) {
+                    return err;
+                }
             }
 
             const uint32_t target_us = detector->cfg.tap_us[i];
@@ -121,7 +140,7 @@ esp_err_t detector_capture_frame(detector_t *detector, detector_frame_t *frame)
             }
 
             int raw = 0;
-            err = detector->io.adc_read(detector->io.ctx, &raw);
+            esp_err_t err = detector->io.adc_read(detector->io.ctx, &raw);
             const uint32_t adc_elapsed_us =
                 (uint32_t)(esp_timer_get_time() - adc_start);
             if (adc_elapsed_us > frame->max_adc_us) {
