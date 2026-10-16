@@ -131,3 +131,7 @@ The sampling clock is software polling of GPIO22 falling edge plus `esp_timer_ge
 ## Acquisition timing note
 
 The physical ESP32 reported an `adc_oneshot_read()` duration up to 39 µs and failed when software scheduled 3 ADC reads within a single 5 ms TX cycle (`VALID 16/16 0/16 0/16`). The updated software samples only one selected tap per TX pulse and rotates t/2t/3t across 48 continuously generated pulses per 16-reading-per-tap frame. This avoids ADC conversion overlap but does NOT hardware-synchronize the sample-and-hold aperture; request-start jitter filtering remains in place. Actual performance after this fix is unverified on hardware.
+
+## Adaptive acquisition at 50–60 µs
+
+Firmware now selects whether to acquire t/2t/3t after the **same** TX falling edge: t ≥ 50 µs uses 3 ADC calls per TX pulse (16 pulses per frame, nominal 80 ms); t ≤ 40 µs conservatively interleaves one ADC conversion per pulse across three pulses (48 pulses per frame, nominal 240 ms). This choice is based on the observed ~39 µs maximum `adc_oneshot_read()` call duration; late calls are still discarded and insufficiently populated frames skipped. Test results on actual hardware are pending.
